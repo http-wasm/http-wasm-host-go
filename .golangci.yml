@@ -1,0 +1,6 @@
+# This is built using - https://golangci-lint.run/usage/configuration/
+run:
+  go: '1.19'
+  modules-download-mode: readonly
+  tests: false
+
