@@ -53,6 +53,7 @@ func Example() {
 	if err != nil {
 		log.Panicln(err)
 	}
+	defer resp.Body.Close()
 	content, _ := io.ReadAll(resp.Body)
 	logger(string(content))
 
