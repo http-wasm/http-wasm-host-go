@@ -10,7 +10,17 @@ libraries written in Go.
 
 * [nethttp](middleware/nethttp): [net/http handler][4]
 
+# WARNING: This is a proof of concept!
+
+The current maturity phase is proof of concept. Once this has both fasthttp
+support and a working example in [dapr][5], we will go back and revisit things
+intentionally deferred. Meanwhile, minor details and test coverage will fall
+short of production standards. This helps us deliver the proof-of-concept
+faster and prevents wasted energy in the case that the concept isn't acceptable
+at all.
+
 [1]: https://github.com/http-wasm
 [2]: https://webassembly.org/
 [3]: https://github.com/http-wasm/http-wasm-abi
 [4]: https://pkg.go.dev/net/http#Handler
+[5]: https://github.com/http-wasm/components-contrib/
