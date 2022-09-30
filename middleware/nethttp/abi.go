@@ -14,8 +14,14 @@ import (
 func compileHost(ctx context.Context, r wazero.Runtime, logger httpwasm.Logger) (wazero.CompiledModule, error) {
 	h := &host{logger: logger}
 	if compiled, err := r.NewHostModuleBuilder("http").
-		ExportFunction("log", h.log, "log", "ptr", "size").
-		ExportFunction("next", h.next, "next").
+		ExportFunction("log", h.log,
+			"log", "ptr", "size").
+		ExportFunction("read_request_header", h.readRequestHeader,
+			"read_request_header", "name_ptr", "name_size", "value_ptr", "value_limit").
+		ExportFunction("set_status_code", h.setStatusCode,
+			"set_status_code", "status_code").
+		ExportFunction("next", h.next,
+			"next").
 		Compile(ctx); err != nil {
 		return nil, fmt.Errorf("wasm: error compiling host: %w", err)
 	} else {
@@ -67,6 +73,43 @@ type host struct {
 func (h *host) log(ctx context.Context, m api.Module, ptr, size uint32) {
 	msg := requireReadString(ctx, m.Memory(), "msg", ptr, size)
 	h.logger(msg)
+}
+
+// readRequestHeader is the WebAssembly function export
+// "http.read_request_header", which writes a header value to memory, and
+// returns the count of bytes written.
+//
+// # Notes
+//
+//   - valueLimit is the limit of bytes to write, which means this can
+//     truncate unless it is the correct size.
+//   - a zero result is possible when the value is empty or the header doesn't
+//     exist.
+func (h *host) readRequestHeader(ctx context.Context, m api.Module,
+	namePtr, nameSize, valuePtr, valueLimit uint32) uint32 {
+	// TODO: maybe getRequestHeaderValueSize for to avoid pre-allocating or
+	// truncating, and also to tell the difference between no header and empty.
+	name := requireReadString(ctx, m.Memory(), "name", namePtr, nameSize)
+	r := requestStateFromContext(ctx).request
+	if values := r.Header.Values(name); len(values) == 0 {
+		return 0
+	} else {
+		value := values[0]
+		size := uint32(len(value))
+		if size > valueLimit {
+			size = valueLimit
+			value = value[0:valueLimit]
+		}
+		m.Memory().Write(ctx, valuePtr, []byte(value))
+		return size
+	}
+}
+
+// setStatusCode is the WebAssembly function export "http.set_status_code",
+// which overwrites the status code of the current response.
+func (h *host) setStatusCode(ctx context.Context, statusCode uint32) {
+	r := requestStateFromContext(ctx).response
+	r.WriteHeader(int(statusCode))
 }
 
 // next is the WebAssembly function export "http.next", which invokes the next
