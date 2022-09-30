@@ -1,7 +1,7 @@
 ;; This example module is written in WebAssembly Text Format to show the
 ;; how a handler works and that it is decoupled from other ABI such as WASI.
 ;; Most users will prefer a higher-level language such as C, Rust or TinyGo.
-(module $example
+(module $log
     ;; http.log writes a message to the host console.
     (import "http" "log" (func $http.log (param $ptr i32) (param $size i32)))
 
