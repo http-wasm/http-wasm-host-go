@@ -9,6 +9,7 @@ This repository includes [host ABI][3] middleware for various HTTP server
 libraries written in Go.
 
 * [nethttp](handler/nethttp): [net/http handler][4]
+* [fasthttp](handler/fasthttp): [net/http RequestHandler][5]
 
 # WARNING: This is a proof of concept!
 
@@ -23,4 +24,5 @@ at all.
 [2]: https://webassembly.org/
 [3]: https://github.com/http-wasm/http-wasm-abi
 [4]: https://pkg.go.dev/net/http#Handler
+[5]: https://github.com/valyala/fasthttp
 [6]: https://github.com/http-wasm/components-contrib/

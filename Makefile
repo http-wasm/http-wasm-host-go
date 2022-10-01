@@ -4,6 +4,7 @@ golangci_lint := github.com/golangci/golangci-lint/cmd/golangci-lint@v1.49.0
 .PHONY: test
 test:
 	@go test -v ./...
+	@(cd handler/fasthttp; go test -v ./...)
 
 golangci_lint_path := $(shell go env GOPATH)/bin/golangci-lint
 
@@ -28,6 +29,7 @@ check:
 	@$(MAKE) lint
 	@$(MAKE) format
 	@go mod tidy
+	@(cd handler/fasthttp; go mod tidy)
 	@if [ ! -z "`git status -s`" ]; then \
 		echo "The following differences will fail CI until committed:"; \
 		git diff --exit-code; \
