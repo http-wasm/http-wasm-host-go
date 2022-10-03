@@ -3,7 +3,7 @@ module github.com/http-wasm/http-wasm-host-go/handler/fasthttp
 go 1.18
 
 require (
-	github.com/http-wasm/http-wasm-host-go v0.0.0
+	github.com/http-wasm/http-wasm-host-go v0.0.0-20221003020659-f22e289e67b5
 	github.com/valyala/fasthttp v1.40.0
 )
 
