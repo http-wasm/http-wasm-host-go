@@ -13,6 +13,16 @@ import (
 	"github.com/http-wasm/http-wasm-host-go/internal/test"
 )
 
+var serveJson = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	r.Header.Set("Content-Type", "application/json")
+	w.Write([]byte("{\"hello\": \"world\"}")) // nolint
+})
+
+var servePath = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	r.Header.Set("Content-Type", "text/plain")
+	w.Write([]byte(r.URL.Path)) // nolint
+})
+
 func Example_auth() {
 	ctx := context.Background()
 
@@ -25,15 +35,14 @@ func Example_auth() {
 	defer mw.Close(ctx)
 
 	// Create the real request handler.
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("{\"hello\": \"world\"}")) // nolint
-	})
+	next := serveJson
 
 	// Wrap this with an interceptor implemented in WebAssembly.
 	wrapped, err := mw.NewHandler(ctx, next)
 	if err != nil {
 		log.Panicln(err)
 	}
+	defer wrapped.Close(ctx)
 
 	// Start the server with the wrapped handler.
 	ts := httptest.NewServer(wrapped)
@@ -79,7 +88,7 @@ func Example_auth() {
 
 func Example_log() {
 	ctx := context.Background()
-	logger := func(_ context.Context, msg string) { fmt.Println(msg) }
+	logger := func(_ context.Context, message string) { fmt.Println(message) }
 
 	// Configure and compile the WebAssembly guest binary. In this case, it is
 	// a logging interceptor.
@@ -90,17 +99,14 @@ func Example_log() {
 	defer mw.Close(ctx)
 
 	// Create the real request handler.
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(200)
-		w.Write([]byte("{\"hello\": \"world\"}")) // nolint
-	})
+	next := serveJson
 
 	// Wrap this with an interceptor implemented in WebAssembly.
 	wrapped, err := mw.NewHandler(ctx, next)
 	if err != nil {
 		log.Panicln(err)
 	}
+	defer wrapped.Close(ctx)
 
 	// Start the server with the wrapped handler.
 	ts := httptest.NewServer(wrapped)
@@ -119,4 +125,50 @@ func Example_log() {
 	// before
 	// after
 	// {"hello": "world"}
+}
+
+func Example_router() {
+	ctx := context.Background()
+
+	// Configure and compile the WebAssembly guest binary. In this case, it is
+	// an example request router.
+	mw, err := NewMiddleware(ctx, test.RouterWasm)
+	if err != nil {
+		log.Panicln(err)
+	}
+	defer mw.Close(ctx)
+
+	// Wrap the real handler with an interceptor implemented in WebAssembly.
+	wrapped, err := mw.NewHandler(ctx, servePath)
+	if err != nil {
+		log.Panicln(err)
+	}
+	defer wrapped.Close(ctx)
+
+	// Start the server with the wrapped handler.
+	ts := httptest.NewServer(wrapped)
+	defer ts.Close()
+
+	// Invoke some requests, only one of which should pass
+	paths := []string{
+		"",
+		"nothosst",
+		"host/a",
+	}
+
+	for _, p := range paths {
+		url := fmt.Sprintf("%s/%s", ts.URL, p)
+		resp, err := http.Get(url)
+		if err != nil {
+			log.Panicln(err)
+		}
+		defer resp.Body.Close()
+		content, _ := io.ReadAll(resp.Body)
+		fmt.Println(string(content))
+	}
+
+	// Output:
+	// hello world
+	// hello world
+	// /a
 }

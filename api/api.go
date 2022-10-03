@@ -2,8 +2,8 @@ package api
 
 import "context"
 
-// LogFunc writes a message to the host console.
-type LogFunc func(ctx context.Context, msg string)
+// LogFunc logs a message to the host's logs.
+type LogFunc func(context.Context, string)
 
 type Closer interface {
 	// Close releases resources such as any Wasm modules, compiled code, and
