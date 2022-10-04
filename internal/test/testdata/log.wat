@@ -2,10 +2,11 @@
 ;; how a handler works and that it is decoupled from other ABI such as WASI.
 ;; Most users will prefer a higher-level language such as C, Rust or TinyGo.
 (module $log
-  ;; log writes a message to the host console.
-  (import "http-handler" "log" (func $log (param $ptr i32) (param $size i32)))
+  ;; log logs a message to the host's logs.
+  (import "http-handler" "log" (func $log
+    (param $message i32) (param $message_len i32)))
 
-  ;; next instructs the host to invoke the next handler.
+  ;; next dispatches control to the next handler on the host.
   (import "http-handler" "next" (func $next))
 
   ;; http-wasm guests are required to export "memory", so that imported

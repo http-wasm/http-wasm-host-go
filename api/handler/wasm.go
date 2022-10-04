@@ -7,6 +7,32 @@ const (
 	// exports.
 	HostModule = "http-handler"
 
+	// FuncLog logs a message to the host's logs.
+	//
+	// # Parameters
+	//
+	// All parameters are of type i32. They contain the log message.
+	//
+	//   - message: memory offset of the UTF-8 encoded message.
+	//   - message_len: possibly zero length of the message in bytes.
+	//
+	// # Result
+	//
+	// There is no result from this function. A host who fails to log the
+	// message will trap (aka panic, "unreachable" instruction).
+	//
+	// # Example
+	//
+	// For example, if parameters are message=8, message_len=2, this function
+	// would log the message "error".
+	//
+	//	              message_len
+	//	           +--------------+
+	//	           |              |
+	//	[]byte{?, 'e', 'r', 'o', 'r', ?}
+	//   message --^
+	FuncLog = "log"
+
 	// FuncHandle is what the guest exports to handle an HTTP server request.
 	//
 	// # Parameters
@@ -16,12 +42,13 @@ const (
 	// # Result
 	//
 	// There is no result from this function. A guest who fails to handle the
-	// request will trap ("unreachable" instruction).
+	// request will trap (aka panic, "unreachable" instruction).
 	FuncHandle = "handle"
 
-	// FuncReadRequestHeader writes a header value to memory if it exists and
+	// FuncGetRequestHeader writes a header value to memory if it exists and
 	// isn't larger than the buffer size limit. The result is `1<<32|value_len`
-	// or zero if the header doesn't exist.
+	// or zero if the header doesn't exist. `value_len` is the actual value
+	// length in bytes.
 	//
 	// # Use cases
 	//
@@ -52,7 +79,7 @@ const (
 	// # Result
 	//
 	// Both results are of type i32. A host who fails to read the request
-	// header will panic ("unreachable" instruction).
+	// header will trap (aka panic, "unreachable" instruction).
 	//
 	//   - exists: zero if the header does not exist and one if it does.
 	//   - value_len: possibly zero length in bytes of the header value.
@@ -92,7 +119,89 @@ const (
 	//	                |                                  |
 	//	[]byte{ 0..15, '0', '1', '2', '3', '4', '5', '6', '7', ?, .. }
 	//	          buf --^
-	FuncReadRequestHeader = "read_request_header"
+	FuncGetRequestHeader = "get_request_header"
+
+	// FuncGetPath writes the request path value to memory, if it isn't larger
+	// than the buffer size limit. The result is the actual path length in
+	// bytes.
+	//
+	// # Use cases
+	//
+	// This signature supports the most common case of retrieving the request
+	// path. However, there are some subtle use cases possible due to
+	// the signature design, particularly helpful for WebAssembly performance:
+	//
+	//   - re-using a buffer for multiple path reads (`buf`).
+	//   - growing a buffer only when needed (retry with larger `buf_limit`).
+	//   - avoiding copying invalidly large paths (`buf_limit`).
+	//
+	// # Parameters
+	//
+	// All parameters are of type i32.
+	//
+	//   - buf: memory offset to write the path, if not larger than `buf_limit`
+	//     bytes.
+	//   - buf_limit: possibly zero maximum length in bytes to write. If the
+	//     result (`path_len`) is larger, nothing is written to memory.
+	//
+	// Note: The path does not include query parameters.
+	//
+	// # Result
+	//
+	// The result, `path_len`, is the i32 path length in bytes, even if larger
+	// than `buf_limit`. A host who fails to read the request path will trap
+	// (aka panic, "unreachable" instruction).
+	//
+	// # Example
+	//
+	// For example, if parameters buf=16 and buf_limit=128, and the request
+	// line was "GET /foo?bar", "/foo" would be written to memory like so:
+	//
+	//	                    path_len
+	//	                +--------------+
+	//	                |              |
+	//	[]byte{ 0..15, '/', 'f', 'o', 'o', ?, .. }
+	//	          buf --^
+	FuncGetPath = "get_path"
+
+	// FuncSetPath overwrites the request path with one read from memory.
+	//
+	// # Parameters
+	//
+	// All parameters are of type i32. They contain the UTF-8 path.
+	//
+	//   - path: memory offset to set the path.
+	//   - path_len: possibly zero length of the path in bytes.
+	//
+	// # Result
+	//
+	// There is no result from this function. A host who fails to set the path
+	// will trap (aka panic, "unreachable" instruction).
+	//
+	// # Example
+	//
+	// For example, if parameters are path=8, path_len=2, this function would
+	// set the path to "/a".
+	//
+	//	          path_len
+	//	           +----+
+	//	           |    |
+	//	[]byte{?, '/', 'a', ?}
+	//	    path --^
+	FuncSetPath = "set_path"
+
+	// FuncNext is an alternative to FuncSendResponse that dispatches control
+	// to the next handler on the host.
+	//
+	// # Parameters
+	//
+	// There are no parameters
+	//
+	// # Result
+	//
+	// There is no result from this function. A host who fails to dispatch to
+	// the next handler will trap (aka panic, "unreachable" instruction).
+	FuncNext = "next"
 
 	// FuncSetResponseHeader sets a response header from a name and value read
 	// from memory.
@@ -110,7 +219,7 @@ const (
 	// # Result
 	//
 	// There is no result from this function. A host who fails to set a value
-	// will trap ("unreachable" instruction).
+	// will trap (aka panic, "unreachable" instruction).
 	//
 	// # Example
 	//
@@ -125,20 +234,7 @@ const (
 	//	                                value --+
 	FuncSetResponseHeader = "set_response_header"
 
-	// FuncNext is an alternative to FuncSendResponse that dispatches control
-	// to the next HTTP handler.
-	//
-	// # Parameters
-	//
-	// There are no parameters
-	//
-	// # Result
-	//
-	// There is no result from this function. A host who fails to dispatch to
-	// the next handler will trap ("unreachable" instruction).
-	FuncNext = "next"
-
-	// FuncSendResponse is an alternative to FuncHandle that sends the HTTP
+	// FuncSendResponse is an alternative to FuncNext that sends the HTTP
 	// response with a given status code and optional body.
 	//
 	// # Parameters
@@ -157,7 +253,7 @@ const (
 	// # Result
 	//
 	// There is no result from this function. A host who fails to send the body
-	// will trap ("unreachable" instruction).
+	// will trap (aka panic, "unreachable" instruction).
 	//
 	// # Example
 	//

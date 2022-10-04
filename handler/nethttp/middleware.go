@@ -55,8 +55,19 @@ func requestStateFromContext(ctx context.Context) *requestState {
 	return ctx.Value(requestStateKey{}).(*requestState)
 }
 
-// GetRequestHeader implements the same method as documented on
-// handler.Host.
+// GetPath implements the same method as documented on handler.Host.
+func (h host) GetPath(ctx context.Context) string {
+	r := requestStateFromContext(ctx).request
+	return r.URL.Path
+}
+
+// SetPath implements the same method as documented on handler.Host.
+func (h host) SetPath(ctx context.Context, path string) {
+	r := requestStateFromContext(ctx).request
+	r.URL.Path = path
+}
+
+// GetRequestHeader implements the same method as documented on handler.Host.
 func (h host) GetRequestHeader(ctx context.Context, name string) (string, bool) {
 	r := requestStateFromContext(ctx).request
 	if values := r.Header.Values(name); len(values) == 0 {

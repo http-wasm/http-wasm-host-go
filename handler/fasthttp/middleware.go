@@ -40,6 +40,18 @@ func NewMiddleware(ctx context.Context, guest []byte, options ...httpwasm.Option
 
 type host struct{}
 
+// GetPath implements the same method as documented on handler.Host.
+func (h host) GetPath(ctx context.Context) string {
+	r := &ctx.(*fasthttp.RequestCtx).Request
+	return string(r.URI().Path())
+}
+
+// SetPath implements the same method as documented on handler.Host.
+func (h host) SetPath(ctx context.Context, path string) {
+	r := &ctx.(*fasthttp.RequestCtx).Request
+	r.URI().SetPath(path)
+}
+
 // GetRequestHeader implements the same method as documented on
 // handler.Host.
 func (h host) GetRequestHeader(ctx context.Context, name string) (string, bool) {

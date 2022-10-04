@@ -11,18 +11,24 @@ import (
 
 type WazeroOptions struct {
 	NewRuntime   func(context.Context) (wazero.Runtime, error)
+	NewNamespace func(context.Context, wazero.Runtime) (wazero.Namespace, error)
 	ModuleConfig wazero.ModuleConfig
 	Logger       api.LogFunc
 }
 
-// DefaultRuntime implements NewRuntime by returning a wazero runtime with WASI
-// host functions instantiated.
+// DefaultRuntime implements WazeroOptions.NewRuntime.
 func DefaultRuntime(ctx context.Context) (wazero.Runtime, error) {
-	r := wazero.NewRuntime(ctx)
+	return wazero.NewRuntime(ctx), nil
+}
 
-	if _, err := wasi_snapshot_preview1.Instantiate(ctx, r); err != nil {
-		_ = r.Close(ctx)
+// DefaultNamespace implements WazeroOptions.NewNamespace.
+func DefaultNamespace(ctx context.Context, r wazero.Runtime) (wazero.Namespace, error) {
+	ns := r.NewNamespace(ctx)
+
+	if _, err := wasi_snapshot_preview1.NewBuilder(r).
+		Instantiate(ctx, ns); err != nil {
+		_ = ns.Close(ctx)
 		return nil, err
 	}
-	return r, nil
+	return ns, nil
 }

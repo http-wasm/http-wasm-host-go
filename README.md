@@ -13,12 +13,12 @@ libraries written in Go.
 
 # WARNING: This is a proof of concept!
 
-The current maturity phase is proof of concept. Once this has a way to set a
-response body and a working example in [dapr][6], we will go back and revisit
-things intentionally deferred. Meanwhile, minor details and test coverage will
-fall short of production standards. This helps us deliver the proof-of-concept
-faster and prevents wasted energy in the case that the concept isn't acceptable
-at all.
+The current maturity phase is proof of concept. Once this has a working example
+in [dapr][6], we will go back and revisit things intentionally deferred.
+
+Meanwhile, minor details and test coverage will fall short of production
+standards. This helps us deliver the proof-of-concept faster and prevents
+wasted energy in the case that the concept isn't acceptable at all.
 
 [1]: https://github.com/http-wasm
 [2]: https://webassembly.org/

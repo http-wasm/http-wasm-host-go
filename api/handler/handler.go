@@ -26,8 +26,14 @@ type Middleware[H any, N api.Closer] interface {
 // Host implements the host side of the WebAssembly module named HostModule.
 // These callbacks are used by the guest function export FuncHandle.
 type Host interface {
+	// GetPath implements the WebAssembly function export FuncGetPath.
+	GetPath(ctx context.Context) string
+
+	// SetPath implements the WebAssembly function export FuncSetPath.
+	SetPath(ctx context.Context, path string)
+
 	// GetRequestHeader implements the WebAssembly function export
-	// FuncReadRequestHeader. This returns false if the value doesn't exist.
+	// FuncGetRequestHeader. This returns false if the value doesn't exist.
 	GetRequestHeader(ctx context.Context, name string) (string, bool)
 
 	// SetResponseHeader implements the WebAssembly function export
