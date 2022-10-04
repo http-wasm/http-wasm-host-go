@@ -7,18 +7,16 @@ import (
 )
 
 // Middleware is a factory of handler instances implemented in Wasm.
-type Middleware[H any, N api.Closer] interface {
-	// TODO: Can Go generics can be more precise like "N api.Closer & H"?
-
+type Middleware[H any] interface {
 	// NewHandler creates an HTTP server handler implemented by a WebAssembly
-	// module. The returned handler will not invoke FuncNext when it obviates a
-	// request for reasons such as an authorization failure or serving from
-	// cache.
+	// module. The returned handler will not invoke FuncNext when it calls
+	// FuncSendResponse for reasons such as an authorization failure or serving
+	// from cache.
 	//
 	// ## Notes
 	//   - Each handler is independent, so they don't share memory.
 	//   - Handlers returned are not safe for concurrent use.
-	NewHandler(ctx context.Context, next H) (N, error)
+	NewHandler(ctx context.Context, next H) H
 
 	api.Closer
 }

@@ -39,11 +39,7 @@ func Example_auth() {
 	defer mw.Close(ctx)
 
 	// Wrap the real handler with an interceptor implemented in WebAssembly.
-	wrapped, err := mw.NewHandler(ctx, serveJson)
-	if err != nil {
-		log.Panicln(err)
-	}
-	defer wrapped.Close(ctx)
+	wrapped := mw.NewHandler(ctx, serveJson)
 
 	// Start the server with the wrapped handler.
 	ts, url := listenAndServe(wrapped)
@@ -100,11 +96,7 @@ func Example_log() {
 	defer mw.Close(ctx)
 
 	// Wrap the real handler with an interceptor implemented in WebAssembly.
-	wrapped, err := mw.NewHandler(ctx, serveJson)
-	if err != nil {
-		log.Panicln(err)
-	}
-	defer wrapped.Close(ctx)
+	wrapped := mw.NewHandler(ctx, serveJson)
 
 	// Start the server with the wrapped handler.
 	ts, url := listenAndServe(wrapped)
@@ -137,11 +129,7 @@ func Example_router() {
 	defer mw.Close(ctx)
 
 	// Wrap the real handler with an interceptor implemented in WebAssembly.
-	wrapped, err := mw.NewHandler(ctx, servePath)
-	if err != nil {
-		log.Panicln(err)
-	}
-	defer wrapped.Close(ctx)
+	wrapped := mw.NewHandler(ctx, servePath)
 
 	// Start the server with the wrapped handler.
 	ts, url := listenAndServe(wrapped)
@@ -170,8 +158,8 @@ func Example_router() {
 	// /a
 }
 
-func listenAndServe(wrapped RequestHandler) (*fasthttp.Server, string) {
-	ts := &fasthttp.Server{Handler: wrapped.Handle}
+func listenAndServe(wrapped fasthttp.RequestHandler) (*fasthttp.Server, string) {
+	ts := &fasthttp.Server{Handler: wrapped}
 	ln, err := net.Listen("tcp4", "127.0.0.1:")
 	if err != nil {
 		log.Panicln(err)
