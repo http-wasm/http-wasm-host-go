@@ -3,6 +3,7 @@ package wasm
 import (
 	"context"
 	"net/http"
+	"sync"
 
 	httpwasm "github.com/http-wasm/http-wasm-host-go"
 	"github.com/http-wasm/http-wasm-host-go/api/handler"
@@ -14,7 +15,7 @@ type Middleware handler.Middleware[http.Handler]
 type middleware struct {
 	runtime *internalhandler.Runtime
 	// TODO: pool
-	guest *internalhandler.Guest
+	handle func(ctx context.Context) error
 }
 
 func NewMiddleware(ctx context.Context, guest []byte, options ...httpwasm.Option) (Middleware, error) {
@@ -22,11 +23,18 @@ func NewMiddleware(ctx context.Context, guest []byte, options ...httpwasm.Option
 	if err != nil {
 		return nil, err
 	}
+	// TODO: pool
 	g, err := r.NewGuest(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return &middleware{runtime: r, guest: g}, nil
+	var mux sync.Mutex
+	handle := func(ctx context.Context) error {
+		mux.Lock()
+		defer mux.Unlock()
+		return g.Handle(ctx)
+	}
+	return &middleware{runtime: r, handle: handle}, nil
 }
 
 type host struct{}
@@ -97,7 +105,7 @@ func (h host) SendResponse(ctx context.Context, statusCode uint32, body []byte) 
 
 // NewHandler implements the same method as documented on handler.Middleware.
 func (w *middleware) NewHandler(ctx context.Context, next http.Handler) http.Handler {
-	return &guest{handle: w.guest.Handle, next: next}
+	return &guest{handle: w.handle, next: next}
 }
 
 // Close implements the same method as documented on handler.Middleware.
