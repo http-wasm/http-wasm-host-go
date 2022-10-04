@@ -5,22 +5,16 @@ import (
 	"net/http"
 
 	httpwasm "github.com/http-wasm/http-wasm-host-go"
-	"github.com/http-wasm/http-wasm-host-go/api"
 	"github.com/http-wasm/http-wasm-host-go/api/handler"
 	internalhandler "github.com/http-wasm/http-wasm-host-go/internal/handler"
 )
 
-// Handler is a http.Handler implemented by a Wasm module. `ServeHTTP` is
-// dispatched to handler.FuncHandle, which is exported by the guest.
-type Handler interface {
-	http.Handler
-	api.Closer
-}
-
-type Middleware handler.Middleware[http.Handler, Handler]
+type Middleware handler.Middleware[http.Handler]
 
 type middleware struct {
 	runtime *internalhandler.Runtime
+	// TODO: pool
+	guest *internalhandler.Guest
 }
 
 func NewMiddleware(ctx context.Context, guest []byte, options ...httpwasm.Option) (Middleware, error) {
@@ -28,7 +22,11 @@ func NewMiddleware(ctx context.Context, guest []byte, options ...httpwasm.Option
 	if err != nil {
 		return nil, err
 	}
-	return &middleware{runtime: r}, nil
+	g, err := r.NewGuest(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &middleware{runtime: r, guest: g}, nil
 }
 
 type host struct{}
@@ -98,13 +96,8 @@ func (h host) SendResponse(ctx context.Context, statusCode uint32, body []byte) 
 }
 
 // NewHandler implements the same method as documented on handler.Middleware.
-func (w *middleware) NewHandler(ctx context.Context, next http.Handler) (Handler, error) {
-	g, err := w.runtime.NewGuest(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	return &guest{guest: g, next: next}, nil
+func (w *middleware) NewHandler(ctx context.Context, next http.Handler) http.Handler {
+	return &guest{handle: w.guest.Handle, next: next}
 }
 
 // Close implements the same method as documented on handler.Middleware.
@@ -112,12 +105,9 @@ func (w *middleware) Close(ctx context.Context) error {
 	return w.runtime.Close(ctx)
 }
 
-// compile-time check to ensure guest implements Handler.
-var _ Handler = &guest{}
-
 type guest struct {
-	guest *internalhandler.Guest
-	next  http.Handler
+	handle func(ctx context.Context) (err error)
+	next   http.Handler
 }
 
 // ServeHTTP implements http.Handler
@@ -125,14 +115,9 @@ func (w *guest) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 	// The guest Wasm actually handles the request. As it may call host
 	// functions, we add context parameters of the current request.
 	ctx := withRequestState(request.Context(), response, request, w.next)
-	if err := w.guest.Handle(ctx); err != nil {
+	if err := w.handle(ctx); err != nil {
 		// TODO: after testing, shouldn't send errors into the HTTP response.
 		response.Write([]byte(err.Error())) // nolint
 		response.WriteHeader(500)
 	}
-}
-
-// Close implements api.Closer
-func (w *guest) Close(ctx context.Context) error {
-	return w.guest.Close(ctx)
 }

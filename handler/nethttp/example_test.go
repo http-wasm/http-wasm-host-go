@@ -38,11 +38,7 @@ func Example_auth() {
 	next := serveJson
 
 	// Wrap this with an interceptor implemented in WebAssembly.
-	wrapped, err := mw.NewHandler(ctx, next)
-	if err != nil {
-		log.Panicln(err)
-	}
-	defer wrapped.Close(ctx)
+	wrapped := mw.NewHandler(ctx, next)
 
 	// Start the server with the wrapped handler.
 	ts := httptest.NewServer(wrapped)
@@ -102,11 +98,7 @@ func Example_log() {
 	next := serveJson
 
 	// Wrap this with an interceptor implemented in WebAssembly.
-	wrapped, err := mw.NewHandler(ctx, next)
-	if err != nil {
-		log.Panicln(err)
-	}
-	defer wrapped.Close(ctx)
+	wrapped := mw.NewHandler(ctx, next)
 
 	// Start the server with the wrapped handler.
 	ts := httptest.NewServer(wrapped)
@@ -139,11 +131,7 @@ func Example_router() {
 	defer mw.Close(ctx)
 
 	// Wrap the real handler with an interceptor implemented in WebAssembly.
-	wrapped, err := mw.NewHandler(ctx, servePath)
-	if err != nil {
-		log.Panicln(err)
-	}
-	defer wrapped.Close(ctx)
+	wrapped := mw.NewHandler(ctx, servePath)
 
 	// Start the server with the wrapped handler.
 	ts := httptest.NewServer(wrapped)

@@ -7,27 +7,19 @@ import (
 	"github.com/valyala/fasthttp"
 
 	httpwasm "github.com/http-wasm/http-wasm-host-go"
-	"github.com/http-wasm/http-wasm-host-go/api"
 	"github.com/http-wasm/http-wasm-host-go/api/handler"
 	internalhandler "github.com/http-wasm/http-wasm-host-go/internal/handler"
 )
 
-// RequestHandler is a fasthttp.RequestHandler implemented by a Wasm module.
-// Handle dispatched to handler.FuncHandle, which is exported by the guest.
-type RequestHandler interface {
-	// Handle implements fasthttp.RequestHandler
-	Handle(*fasthttp.RequestCtx)
-
-	api.Closer
-}
-
-type Middleware handler.Middleware[fasthttp.RequestHandler, RequestHandler]
+type Middleware handler.Middleware[fasthttp.RequestHandler]
 
 // compile-time check to ensure middleware implements Middleware.
 var _ Middleware = &middleware{}
 
 type middleware struct {
 	runtime *internalhandler.Runtime
+	// TODO: pool
+	guest *internalhandler.Guest
 }
 
 func NewMiddleware(ctx context.Context, guest []byte, options ...httpwasm.Option) (Middleware, error) {
@@ -35,7 +27,11 @@ func NewMiddleware(ctx context.Context, guest []byte, options ...httpwasm.Option
 	if err != nil {
 		return nil, err
 	}
-	return &middleware{runtime: r}, nil
+	g, err := r.NewGuest(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &middleware{runtime: r, guest: g}, nil
 }
 
 type host struct{}
@@ -86,13 +82,8 @@ func (h host) SendResponse(ctx context.Context, statusCode uint32, body []byte) 
 }
 
 // NewHandler implements the same method as documented on handler.Middleware.
-func (w *middleware) NewHandler(ctx context.Context, next fasthttp.RequestHandler) (RequestHandler, error) {
-	g, err := w.runtime.NewGuest(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	return &guest{guest: g, next: next}, nil
+func (w *middleware) NewHandler(ctx context.Context, next fasthttp.RequestHandler) fasthttp.RequestHandler {
+	return (&guest{handle: w.guest.Handle, next: next}).Handle
 }
 
 // Close implements the same method as documented on handler.Middleware.
@@ -101,19 +92,14 @@ func (w *middleware) Close(ctx context.Context) error {
 }
 
 type guest struct {
-	guest *internalhandler.Guest
-	next  fasthttp.RequestHandler
+	handle func(ctx context.Context) (err error)
+	next   fasthttp.RequestHandler
 }
 
 // Handle implements RequestHandler.Handle
 func (w *guest) Handle(ctx *fasthttp.RequestCtx) {
 	ctx.SetUserValue("next", w.next)
-	if err := w.guest.Handle(ctx); err != nil {
+	if err := w.handle(ctx); err != nil {
 		ctx.Error(err.Error(), fasthttp.StatusInternalServerError)
 	}
-}
-
-// Close implements api.Closer
-func (w *guest) Close(ctx context.Context) error {
-	return w.guest.Close(ctx)
 }
