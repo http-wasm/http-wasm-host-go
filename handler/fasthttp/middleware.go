@@ -3,7 +3,6 @@ package wasm
 import (
 	"context"
 	"strconv"
-	"sync"
 
 	"github.com/valyala/fasthttp"
 
@@ -27,18 +26,7 @@ func NewMiddleware(ctx context.Context, guest []byte, options ...httpwasm.Option
 	if err != nil {
 		return nil, err
 	}
-	// TODO: pool
-	g, err := r.NewGuest(ctx)
-	if err != nil {
-		return nil, err
-	}
-	var mux sync.Mutex
-	handle := func(ctx context.Context) error {
-		mux.Lock()
-		defer mux.Unlock()
-		return g.Handle(ctx)
-	}
-	return &middleware{runtime: r, handle: handle}, nil
+	return &middleware{runtime: r, handle: r.Handle}, nil
 }
 
 type host struct{}
