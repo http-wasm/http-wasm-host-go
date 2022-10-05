@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/tetratelabs/wazero"
 	wazeroapi "github.com/tetratelabs/wazero/api"
@@ -20,6 +21,7 @@ type Runtime struct {
 	newNamespace            httpwasm.NewNamespace
 	config                  wazero.ModuleConfig
 	logFn                   api.LogFunc
+	pool                    sync.Pool
 }
 
 func NewRuntime(ctx context.Context, guest []byte, host handler.Host, options ...httpwasm.Option) (*Runtime, error) {
@@ -50,7 +52,30 @@ func NewRuntime(ctx context.Context, guest []byte, host handler.Host, options ..
 		return nil, err
 	}
 
+	// Eagerly add a guest to the pool to catch initialization failure.
+	if g, err := r.newGuest(ctx); err != nil {
+		_ = r.Close(ctx)
+		return nil, err
+	} else {
+		r.pool.Put(g)
+	}
+
 	return r, nil
+}
+
+// Handle handles a request by calling the WebAssembly function export "handle" of the guest.
+func (r *Runtime) Handle(ctx context.Context) error {
+	poolG := r.pool.Get()
+	if poolG == nil {
+		g, err := r.newGuest(ctx)
+		if err != nil {
+			return err
+		}
+		poolG = g
+	}
+	g := poolG.(*guest)
+	defer r.pool.Put(g)
+	return g.handle(ctx)
 }
 
 // Close implements api.Closer
@@ -59,13 +84,13 @@ func (r *Runtime) Close(ctx context.Context) error {
 	return r.runtime.Close(ctx)
 }
 
-type Guest struct {
-	ns     wazero.Namespace
-	guest  wazeroapi.Module
-	handle wazeroapi.Function
+type guest struct {
+	ns         wazero.Namespace
+	guest      wazeroapi.Module
+	handleFunc wazeroapi.Function
 }
 
-func (r *Runtime) NewGuest(ctx context.Context) (*Guest, error) {
+func (r *Runtime) newGuest(ctx context.Context) (*guest, error) {
 	ns, err := r.newNamespace(ctx, r.runtime)
 	if err != nil {
 		return nil, fmt.Errorf("wasm: error creating namespace: %w", err)
@@ -78,25 +103,19 @@ func (r *Runtime) NewGuest(ctx context.Context) (*Guest, error) {
 		return nil, fmt.Errorf("wasm: error instantiating host: %w", err)
 	}
 
-	guest, err := ns.InstantiateModule(ctx, r.guestModule, r.config)
+	g, err := ns.InstantiateModule(ctx, r.guestModule, r.config)
 	if err != nil {
 		_ = ns.Close(ctx)
 		return nil, fmt.Errorf("wasm: error instantiating guest: %w", err)
 	}
 
-	return &Guest{ns: ns, guest: guest, handle: guest.ExportedFunction(handler.FuncHandle)}, nil
+	return &guest{ns: ns, guest: g, handleFunc: g.ExportedFunction(handler.FuncHandle)}, nil
 }
 
 // Handle calls the WebAssembly function export "handle".
-func (g *Guest) Handle(ctx context.Context) (err error) {
-	_, err = g.handle.Call(ctx)
+func (g *guest) handle(ctx context.Context) (err error) {
+	_, err = g.handleFunc.Call(ctx)
 	return
-}
-
-// Close implements api.Closer
-func (g *Guest) Close(ctx context.Context) error {
-	// Closing the namespace closes both the host and guest modules
-	return g.ns.Close(ctx)
 }
 
 // getPath is the WebAssembly function export named handler.FuncGetPath which

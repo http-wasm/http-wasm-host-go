@@ -3,7 +3,6 @@ package wasm
 import (
 	"context"
 	"strconv"
-	"sync"
 
 	"github.com/valyala/fasthttp"
 
@@ -19,7 +18,6 @@ var _ Middleware = &middleware{}
 
 type middleware struct {
 	runtime *internalhandler.Runtime
-	handle  func(ctx context.Context) error
 }
 
 func NewMiddleware(ctx context.Context, guest []byte, options ...httpwasm.Option) (Middleware, error) {
@@ -27,18 +25,7 @@ func NewMiddleware(ctx context.Context, guest []byte, options ...httpwasm.Option
 	if err != nil {
 		return nil, err
 	}
-	// TODO: pool
-	g, err := r.NewGuest(ctx)
-	if err != nil {
-		return nil, err
-	}
-	var mux sync.Mutex
-	handle := func(ctx context.Context) error {
-		mux.Lock()
-		defer mux.Unlock()
-		return g.Handle(ctx)
-	}
-	return &middleware{runtime: r, handle: handle}, nil
+	return &middleware{runtime: r}, nil
 }
 
 type host struct{}
@@ -90,7 +77,7 @@ func (h host) SendResponse(ctx context.Context, statusCode uint32, body []byte) 
 
 // NewHandler implements the same method as documented on handler.Middleware.
 func (w *middleware) NewHandler(ctx context.Context, next fasthttp.RequestHandler) fasthttp.RequestHandler {
-	return (&guest{handle: w.handle, next: next}).Handle
+	return (&guest{handle: w.runtime.Handle, next: next}).Handle
 }
 
 // Close implements the same method as documented on handler.Middleware.
