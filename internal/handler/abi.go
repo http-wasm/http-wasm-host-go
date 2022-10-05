@@ -85,8 +85,9 @@ func (r *Runtime) Close(ctx context.Context) error {
 }
 
 type guest struct {
-	ns    wazero.Namespace
-	guest wazeroapi.Module
+	ns         wazero.Namespace
+	guest      wazeroapi.Module
+	handleFunc wazeroapi.Function
 }
 
 func (r *Runtime) newGuest(ctx context.Context) (*guest, error) {
@@ -108,12 +109,12 @@ func (r *Runtime) newGuest(ctx context.Context) (*guest, error) {
 		return nil, fmt.Errorf("wasm: error instantiating guest: %w", err)
 	}
 
-	return &guest{ns: ns, guest: g}, nil
+	return &guest{ns: ns, guest: g, handleFunc: g.ExportedFunction(handler.FuncHandle)}, nil
 }
 
 // Handle calls the WebAssembly function export "handle".
 func (g *guest) handle(ctx context.Context) (err error) {
-	_, err = g.guest.ExportedFunction(handler.FuncHandle).Call(ctx)
+	_, err = g.handleFunc.Call(ctx)
 	return
 }
 
