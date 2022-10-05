@@ -13,8 +13,6 @@ type Middleware handler.Middleware[http.Handler]
 
 type middleware struct {
 	runtime *internalhandler.Runtime
-	// TODO: pool
-	handle func(ctx context.Context) error
 }
 
 func NewMiddleware(ctx context.Context, guest []byte, options ...httpwasm.Option) (Middleware, error) {
@@ -22,7 +20,7 @@ func NewMiddleware(ctx context.Context, guest []byte, options ...httpwasm.Option
 	if err != nil {
 		return nil, err
 	}
-	return &middleware{runtime: r, handle: r.Handle}, nil
+	return &middleware{runtime: r}, nil
 }
 
 type host struct{}
@@ -93,7 +91,7 @@ func (h host) SendResponse(ctx context.Context, statusCode uint32, body []byte) 
 
 // NewHandler implements the same method as documented on handler.Middleware.
 func (w *middleware) NewHandler(ctx context.Context, next http.Handler) http.Handler {
-	return &guest{handle: w.handle, next: next}
+	return &guest{handle: w.runtime.Handle, next: next}
 }
 
 // Close implements the same method as documented on handler.Middleware.
