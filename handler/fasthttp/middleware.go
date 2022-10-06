@@ -30,22 +30,42 @@ func NewMiddleware(ctx context.Context, guest []byte, options ...httpwasm.Option
 
 type host struct{}
 
+// requestStateKey is a context.Context Value associated with a requestState
+// pointer to the current request.
+type requestStateKey struct{}
+
+type requestState struct {
+	requestCtx *fasthttp.RequestCtx
+	next       fasthttp.RequestHandler
+}
+
+func withRequestState(ctx context.Context, requestCtx *fasthttp.RequestCtx, next fasthttp.RequestHandler) context.Context {
+	return context.WithValue(ctx, requestStateKey{}, &requestState{
+		requestCtx: requestCtx,
+		next:       next,
+	})
+}
+
+func requestStateFromContext(ctx context.Context) *requestState {
+	return ctx.Value(requestStateKey{}).(*requestState)
+}
+
 // GetPath implements the same method as documented on handler.Host.
 func (h host) GetPath(ctx context.Context) string {
-	r := &ctx.(*fasthttp.RequestCtx).Request
+	r := &requestStateFromContext(ctx).requestCtx.Request
 	return string(r.URI().Path())
 }
 
 // SetPath implements the same method as documented on handler.Host.
 func (h host) SetPath(ctx context.Context, path string) {
-	r := &ctx.(*fasthttp.RequestCtx).Request
+	r := &requestStateFromContext(ctx).requestCtx.Request
 	r.URI().SetPath(path)
 }
 
 // GetRequestHeader implements the same method as documented on
 // handler.Host.
 func (h host) GetRequestHeader(ctx context.Context, name string) (string, bool) {
-	r := &ctx.(*fasthttp.RequestCtx).Request
+	r := &requestStateFromContext(ctx).requestCtx.Request
 	if value := r.Header.Peek(name); value == nil {
 		return "", false
 	} else {
@@ -55,19 +75,19 @@ func (h host) GetRequestHeader(ctx context.Context, name string) (string, bool) 
 
 // Next implements the same method as documented on handler.Host.
 func (h host) Next(ctx context.Context) {
-	fastCtx := ctx.(*fasthttp.RequestCtx)
-	fastCtx.UserValue("next").(fasthttp.RequestHandler)(fastCtx)
+	s := requestStateFromContext(ctx)
+	s.next(s.requestCtx)
 }
 
 // SetResponseHeader implements the same method as documented on handler.Host.
 func (h host) SetResponseHeader(ctx context.Context, name, value string) {
-	r := &ctx.(*fasthttp.RequestCtx).Response
+	r := &requestStateFromContext(ctx).requestCtx.Response
 	r.Header.Set(name, value)
 }
 
 // SendResponse implements the same method as documented on handler.Host.
 func (h host) SendResponse(ctx context.Context, statusCode uint32, body []byte) {
-	r := &ctx.(*fasthttp.RequestCtx).Response
+	r := &requestStateFromContext(ctx).requestCtx.Response
 	if body != nil {
 		r.Header.Set("Content-Length", strconv.Itoa(len(body)))
 		r.AppendBody(body)
@@ -91,9 +111,11 @@ type guest struct {
 }
 
 // Handle implements RequestHandler.Handle
-func (w *guest) Handle(ctx *fasthttp.RequestCtx) {
-	ctx.SetUserValue("next", w.next)
+func (w *guest) Handle(requestCtx *fasthttp.RequestCtx) {
+	// The guest Wasm actually handles the request. As it may call host
+	// functions, we add context parameters of the current request.
+	ctx := withRequestState(requestCtx, requestCtx, w.next)
 	if err := w.handle(ctx); err != nil {
-		ctx.Error(err.Error(), fasthttp.StatusInternalServerError)
+		requestCtx.Error(err.Error(), fasthttp.StatusInternalServerError)
 	}
 }
