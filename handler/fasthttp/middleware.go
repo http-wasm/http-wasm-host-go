@@ -85,14 +85,17 @@ func (h host) SetResponseHeader(ctx context.Context, name, value string) {
 	r.Header.Set(name, value)
 }
 
-// SendResponse implements the same method as documented on handler.Host.
-func (h host) SendResponse(ctx context.Context, statusCode uint32, body []byte) {
+// SetStatusCode implements the same method as documented on handler.Host.
+func (h host) SetStatusCode(ctx context.Context, statusCode uint32) {
 	r := &requestStateFromContext(ctx).requestCtx.Response
-	if body != nil {
-		r.Header.Set("Content-Length", strconv.Itoa(len(body)))
-		r.AppendBody(body)
-	}
 	r.SetStatusCode(int(statusCode))
+}
+
+// SetResponseBody implements the same method as documented on handler.Host.
+func (h host) SetResponseBody(ctx context.Context, body []byte) {
+	r := &requestStateFromContext(ctx).requestCtx.Response
+	r.Header.Set("Content-Length", strconv.Itoa(len(body)))
+	r.SetBody(body)
 }
 
 // NewHandler implements the same method as documented on handler.Middleware.

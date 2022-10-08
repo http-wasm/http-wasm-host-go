@@ -21,9 +21,8 @@
     (param $name i32) (param $name_len i32)
     (param $value i32) (param $value_len i32)))
 
-  ;; next instructs the host to invoke the next handler.
-  (import "http-handler" "send_response" (func $send_response
-    (param $status_code i32)
+  ;; set_response_body overwrites the response body with a value read from memory.
+  (import "http-handler" "set_response_body" (func $set_response_body
     (param $body i32)
     (param $body_len i32)))
 
@@ -34,13 +33,6 @@
   ;; path is an arbitrary area to write data.
   (global $path       i32 (i32.const 1024))
   (global $path_limit i32 (i32.const  256))
-
-  ;; clear_path clears any memory that may have been written.
-  (func $clear_path (param $path_len i32)
-    (memory.fill
-      (global.get $path)
-      (local.get  $path_len)
-      (i32.const  0)))
 
   (global $host_prefix i32 (i32.const 0))
   (data (i32.const 0) "/host")
@@ -72,7 +64,6 @@
     ;; if path_len > path_limit { next() }
     (if (i32.gt_s (local.get $path_len) (global.get $path_limit))
       (then
-        (call $clear_path (local.get $path_len))
         (call $next)
         (return))) ;; dispatch if the path is too long.
 
@@ -90,19 +81,16 @@
             (call $set_path ;; path = path[host_prefix_len:]
               (i32.add (global.get $path)     (global.get $host_prefix_len))
               (i32.sub (local.get  $path_len) (global.get $host_prefix_len)))
-            (call $clear_path (local.get $path_len))
             (call $next)
             (return))))) ;; dispatch with the stripped path.
 
     ;; Otherwise, serve a static response.
-    (call $clear_path (local.get $path_len))
     (call $set_response_header
       (global.get $content_type_name)
       (global.get $content_type_name_len)
       (global.get $content_type_value)
       (global.get $content_type_value_len))
-    (call $send_response
-      (i32.const 200)
+    (call $set_response_body
       (global.get $body)
       (global.get $body_len)))
 

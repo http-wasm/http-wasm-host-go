@@ -9,9 +9,9 @@ import (
 // Middleware is a factory of handler instances implemented in Wasm.
 type Middleware[H any] interface {
 	// NewHandler creates an HTTP server handler implemented by a WebAssembly
-	// module. The returned handler will not invoke FuncNext when it calls
-	// FuncSendResponse for reasons such as an authorization failure or serving
-	// from cache.
+	// module. The returned handler will not invoke FuncNext when it constructs
+	// a response in guest wasm for reasons such as an authorization failure or
+	// serving from cache.
 	//
 	// ## Notes
 	//   - Each handler is independent, so they don't share memory.
@@ -42,8 +42,11 @@ type Host interface {
 	// the next handler.
 	Next(ctx context.Context)
 
-	// SendResponse implements the WebAssembly function export FuncSendResponse
-	// which sends the current response with the given status code and optional
-	// body.
-	SendResponse(ctx context.Context, statusCode uint32, body []byte)
+	// SetStatusCode implements the WebAssembly function export
+	// FuncSetStatusCode.
+	SetStatusCode(ctx context.Context, statusCode uint32)
+
+	// SetResponseBody implements the WebAssembly function export
+	// FuncSetResponseBody.
+	SetResponseBody(ctx context.Context, body []byte)
 }
