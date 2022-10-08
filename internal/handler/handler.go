@@ -188,12 +188,23 @@ func (r *Runtime) setResponseHeader(ctx context.Context, mod wazeroapi.Module,
 	r.host.SetResponseHeader(ctx, n, v)
 }
 
-// sendResponse implements the WebAssembly host function
-// handler.FuncSendResponse.
-func (r *Runtime) sendResponse(ctx context.Context, mod wazeroapi.Module,
-	statusCode, body, bodyLen uint32) {
-	b := mustRead(ctx, mod.Memory(), "body", body, bodyLen)
-	r.host.SendResponse(ctx, statusCode, b)
+// setStatusCode implements the WebAssembly host function
+// handler.FuncSetStatusCode.
+func (r *Runtime) setStatusCode(ctx context.Context, statusCode uint32) {
+	r.host.SetStatusCode(ctx, statusCode)
+}
+
+// setResponseBody implements the WebAssembly host function
+// handler.FuncSetResponseBody.
+func (r *Runtime) setResponseBody(ctx context.Context, mod wazeroapi.Module,
+	body, bodyLen uint32) {
+	var b []byte
+	if bodyLen == 0 {
+		b = emptyBody
+	} else {
+		b = mustRead(ctx, mod.Memory(), "body", body, bodyLen)
+	}
+	r.host.SetResponseBody(ctx, b)
 }
 
 func (r *Runtime) compileHost(ctx context.Context) (wazero.CompiledModule, error) {
@@ -208,8 +219,10 @@ func (r *Runtime) compileHost(ctx context.Context) (wazero.CompiledModule, error
 			handler.FuncGetRequestHeader, "name", "name_len", "buf", "buf_limit").
 		ExportFunction(handler.FuncSetResponseHeader, r.setResponseHeader,
 			handler.FuncSetResponseHeader, "name", "name_len", "value", "value_len").
-		ExportFunction(handler.FuncSendResponse, r.sendResponse,
-			handler.FuncSendResponse, "status_code", "body", "body_len").
+		ExportFunction(handler.FuncSetStatusCode, r.setStatusCode,
+			handler.FuncSetStatusCode, "status_code").
+		ExportFunction(handler.FuncSetResponseBody, r.setResponseBody,
+			handler.FuncSetResponseBody, "body", "body_len").
 		ExportFunction(handler.FuncNext, r.host.Next,
 			handler.FuncNext).
 		Compile(ctx); err != nil {

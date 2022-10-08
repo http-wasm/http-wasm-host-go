@@ -80,13 +80,16 @@ func (h host) SetResponseHeader(ctx context.Context, name, value string) {
 	r.Header().Set(name, value)
 }
 
-// SendResponse implements the same method as documented on handler.Host.
-func (h host) SendResponse(ctx context.Context, statusCode uint32, body []byte) {
+// SetStatusCode implements the same method as documented on handler.Host.
+func (h host) SetStatusCode(ctx context.Context, statusCode uint32) {
 	r := requestStateFromContext(ctx).response
 	r.WriteHeader(int(statusCode))
-	if body != nil {
-		r.Write(body) // nolint
-	}
+}
+
+// SetResponseBody implements the same method as documented on handler.Host.
+func (h host) SetResponseBody(ctx context.Context, body []byte) {
+	r := requestStateFromContext(ctx).response
+	r.Write(body) // nolint
 }
 
 // NewHandler implements the same method as documented on handler.Middleware.
@@ -111,7 +114,7 @@ func (w *guest) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 	ctx := withRequestState(request.Context(), response, request, w.next)
 	if err := w.handle(ctx); err != nil {
 		// TODO: after testing, shouldn't send errors into the HTTP response.
-		response.Write([]byte(err.Error())) // nolint
 		response.WriteHeader(500)
+		response.Write([]byte(err.Error())) // nolint
 	}
 }

@@ -21,11 +21,9 @@
     (param $name i32) (param $name_len i32)
     (param $value i32) (param $value_len i32)))
 
-  ;; next instructs the host to invoke the next handler.
-  (import "http-handler" "send_response" (func $send_response
-    (param $status_code i32)
-    (param $body i32)
-    (param $body_len i32)))
+  ;; set_status_code overrides the status code. The default is 200.
+  (import "http-handler" "set_status_code" (func $set_status_code
+    (param $status_code i32)))
 
   ;; http-wasm guests are required to export "memory", so that imported
   ;; functions like "get_request_header" can read memory.
@@ -50,13 +48,6 @@
       (global.get $authorization_name_len)
       (global.get $buf)
       (global.get $authorization_value_len)))
-
-  ;; clear_buf clears any memory that may have been written.
-  (func $clear_buf (param $len i32)
-    (memory.fill
-      (global.get $buf)
-      (local.get  $len)
-      (i32.const  0)))
 
   (global $authenticate_name i32 (i32.const 128))
   (data (i32.const 128) "WWW-Authenticate")
@@ -85,15 +76,13 @@
 
     (if (i32.eqz (local.get $authorization_len))
       (then ;; authorization required, but no header
-        (call $clear_buf (local.get $authorization_len))
         (call $set_authenticate)
-        (call $send_response (i32.const 401) (i32.const 0) (i32.const 0))
+        (call $set_status_code (i32.const 401))
         (return)))
 
     (if (i32.ne (global.get $authorization_value_len) (local.get $authorization_len))
       (then ;; authorization_value_length != i32($header_value)
-        (call $clear_buf (local.get $authorization_len))
-        (call $send_response (i32.const 401) (i32.const 0) (i32.const 0))
+        (call $set_status_code (i32.const 401))
         (return)))
 
     (local.set $authorization_eq (call $memeq
@@ -101,11 +90,9 @@
       (global.get $authorization_value)
       (global.get $authorization_value_len)))
 
-    (call $clear_buf (local.get $authorization_len))
-
     (if (i32.eqz (local.get $authorization_eq))
       (then ;; authenticate_value != authorization_value
-        (call $send_response (i32.const 401) (i32.const 0) (i32.const 0)))
+        (call $set_status_code (i32.const 401)))
       (else ;; authorization passed! call the next handler
         (call $next))))
 

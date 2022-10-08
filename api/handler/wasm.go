@@ -46,7 +46,14 @@ const (
 	FuncSetPath = "set_path"
 
 	// FuncNext calls a downstream handler and blocks until it is finished
-	// processing the response. This is an alternative to FuncSendResponse.
+	// processing.
+	//
+	// This is an alternative to calling FuncSetStatusCode or
+	// FuncSetResponseBody to construct the response in guest wasm.
+	//
+	// Note: Whether the next handler sends the response is implementation
+	// specific. Some implementations may flush the response before returning,
+	// while others schedule it for later.
 	//
 	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#next
 	FuncNext = "next"
@@ -57,9 +64,21 @@ const (
 	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#set-response-header
 	FuncSetResponseHeader = "set_response_header"
 
-	// FuncSendResponse sends the HTTP response with a given status code and
-	// optional body. This is an alternative to FuncNext.
+	// FuncSetStatusCode overrides the status code. The default is 200.
 	//
-	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#send-response
-	FuncSendResponse = "send_response"
+	// This is an alternative to calling FuncNext. Calling this afterwards has
+	// undefined behavior.
+	//
+	// TODO: document on http-wasm-abi
+	FuncSetStatusCode = "set_status_code"
+
+	// FuncSetResponseBody overwrites the response body with a value read from
+	// memory. In doing so, this overwrites the "Content-Length" header with
+	// its length.
+	//
+	// This is an alternative to calling FuncNext. Calling this afterwards has
+	// undefined behavior.
+	//
+	// TODO: document on http-wasm-abi
+	FuncSetResponseBody = "set_response_body"
 )

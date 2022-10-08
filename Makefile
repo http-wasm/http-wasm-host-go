@@ -1,6 +1,16 @@
 goimports := golang.org/x/tools/cmd/goimports@v0.1.12
 golangci_lint := github.com/golangci/golangci-lint/cmd/golangci-lint@v1.49.0
 
+.PHONY: build.test
+build.test:
+	@$(MAKE) build.wat
+
+wat_sources := $(wildcard internal/test/testdata/*.wat)
+build.wat: $(wat_sources)
+	@for f in $^; do \
+	    wat2wasm -o $$(echo $$f | sed -e 's/\.wat/\.wasm/') --debug-names $$f; \
+	done
+
 .PHONY: test
 test:
 	@go test -v ./...
