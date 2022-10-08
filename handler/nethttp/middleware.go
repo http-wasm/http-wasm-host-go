@@ -2,10 +2,11 @@ package wasm
 
 import (
 	"context"
+	"net/http"
+
 	httpwasm "github.com/http-wasm/http-wasm-host-go"
 	"github.com/http-wasm/http-wasm-host-go/api/handler"
 	internalhandler "github.com/http-wasm/http-wasm-host-go/internal/handler"
-	"net/http"
 )
 
 type Middleware handler.Middleware[http.Handler]
