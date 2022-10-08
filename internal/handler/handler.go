@@ -1,4 +1,6 @@
-package handler
+// Package internalhandler is not named handler as doing so interferes with
+// godoc links for the api handler package.
+package internalhandler
 
 import (
 	"context"
@@ -63,7 +65,21 @@ func NewRuntime(ctx context.Context, guest []byte, host handler.Host, options ..
 	return r, nil
 }
 
-// Handle handles a request by calling the WebAssembly function export "handle" of the guest.
+func (r *Runtime) compileGuest(ctx context.Context, wasm []byte) (wazero.CompiledModule, error) {
+	if guest, err := r.runtime.CompileModule(ctx, wasm); err != nil {
+		return nil, fmt.Errorf("wasm: error compiling guest: %w", err)
+	} else if handle, ok := guest.ExportedFunctions()[handler.FuncHandle]; !ok {
+		return nil, fmt.Errorf("wasm: guest doesn't export func[%s]", handler.FuncHandle)
+	} else if len(handle.ParamTypes()) != 0 || len(handle.ResultTypes()) != 0 {
+		return nil, fmt.Errorf("wasm: guest exports the wrong signature for func[%s]. should be nullary", handler.FuncHandle)
+	} else if _, ok = guest.ExportedMemories()[api.Memory]; !ok {
+		return nil, fmt.Errorf("wasm: guest doesn't export memory[%s]", api.Memory)
+	} else {
+		return guest, nil
+	}
+}
+
+// Handle handles a request by calling guest.handle.
 func (r *Runtime) Handle(ctx context.Context) error {
 	poolG := r.pool.Get()
 	if poolG == nil {
@@ -112,15 +128,20 @@ func (r *Runtime) newGuest(ctx context.Context) (*guest, error) {
 	return &guest{ns: ns, guest: g, handleFunc: g.ExportedFunction(handler.FuncHandle)}, nil
 }
 
-// Handle calls the WebAssembly function export "handle".
+// handle calls the WebAssembly guest function handler.FuncHandle.
 func (g *guest) handle(ctx context.Context) (err error) {
 	_, err = g.handleFunc.Call(ctx)
 	return
 }
 
-// getPath is the WebAssembly function export named handler.FuncGetPath which
-// writes the request path value to memory, if it isn't larger than the buffer
-// size limit. The result is the actual path length in bytes.
+// log implements the WebAssembly host function handler.FuncLog.
+func (r *Runtime) log(ctx context.Context, mod wazeroapi.Module,
+	message, messageLen uint32) {
+	m := mustReadString(ctx, mod.Memory(), "message", message, messageLen)
+	r.logFn(ctx, m)
+}
+
+// getPath implements the WebAssembly host function handler.FuncGetPath.
 func (r *Runtime) getPath(ctx context.Context, mod wazeroapi.Module,
 	buf, bufLimit uint32) (result uint32) {
 	path := r.host.GetPath(ctx)
@@ -132,18 +153,16 @@ func (r *Runtime) getPath(ctx context.Context, mod wazeroapi.Module,
 	return
 }
 
-// setPath is the WebAssembly function export named handler.FuncSetPath which
-// overwrites the request path with one read from memory.
+// getRequestHeader implements the WebAssembly host function
+// handler.FuncSetPath.
 func (r *Runtime) setPath(ctx context.Context, mod wazeroapi.Module,
 	path, pathLen uint32) {
 	p := mustReadString(ctx, mod.Memory(), "path", path, pathLen)
 	r.host.SetPath(ctx, p)
 }
 
-// getRequestHeader is the WebAssembly function export named
-// handler.FuncGetRequestHeader which writes a header value to memory if it
-// exists and isn't larger than the buffer size limit. The result is
-// `1<<32|value_len` or zero if the header doesn't exist.
+// getRequestHeader implements the WebAssembly host function
+// handler.FuncGetRequestHeader.
 func (r *Runtime) getRequestHeader(ctx context.Context, mod wazeroapi.Module,
 	name, nameLen, value, valueLimit uint32) (result uint64) {
 	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
@@ -160,9 +179,8 @@ func (r *Runtime) getRequestHeader(ctx context.Context, mod wazeroapi.Module,
 	return
 }
 
-// setResponseHeader is the WebAssembly function export named
-// handler.FuncSetResponseHeader which sets a response header from a name and
-// value read from memory.
+// setResponseHeader implements the WebAssembly host function
+// handler.FuncRequestHeader.
 func (r *Runtime) setResponseHeader(ctx context.Context, mod wazeroapi.Module,
 	name, nameLen, value, valueLen uint32) {
 	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
@@ -170,9 +188,8 @@ func (r *Runtime) setResponseHeader(ctx context.Context, mod wazeroapi.Module,
 	r.host.SetResponseHeader(ctx, n, v)
 }
 
-// sendResponse is the WebAssembly function export named
-// handler.FuncSendResponse which sends the HTTP response with a given status
-// code and optional body.
+// sendResponse implements the WebAssembly host function
+// handler.FuncSendResponse.
 func (r *Runtime) sendResponse(ctx context.Context, mod wazeroapi.Module,
 	statusCode, body, bodyLen uint32) {
 	b := mustRead(ctx, mod.Memory(), "body", body, bodyLen)
@@ -200,28 +217,6 @@ func (r *Runtime) compileHost(ctx context.Context) (wazero.CompiledModule, error
 	} else {
 		return compiled, nil
 	}
-}
-
-func (r *Runtime) compileGuest(ctx context.Context, wasm []byte) (wazero.CompiledModule, error) {
-	if guest, err := r.runtime.CompileModule(ctx, wasm); err != nil {
-		return nil, fmt.Errorf("wasm: error compiling guest: %w", err)
-	} else if handle, ok := guest.ExportedFunctions()[handler.FuncHandle]; !ok {
-		return nil, fmt.Errorf("wasm: guest doesn't export func[%s]", handler.FuncHandle)
-	} else if len(handle.ParamTypes()) != 0 || len(handle.ResultTypes()) != 0 {
-		return nil, fmt.Errorf("wasm: guest exports the wrong signature for func[%s]. should be nullary", handler.FuncHandle)
-	} else if _, ok = guest.ExportedMemories()[api.Memory]; !ok {
-		return nil, fmt.Errorf("wasm: guest doesn't export memory[%s]", api.Memory)
-	} else {
-		return guest, nil
-	}
-}
-
-// log implements the WebAssembly function export "log". It has
-// the same signature as api.LogFunc.
-func (r *Runtime) log(ctx context.Context, mod wazeroapi.Module,
-	message, messageLen uint32) {
-	m := mustReadString(ctx, mod.Memory(), "message", message, messageLen)
-	r.logFn(ctx, m)
 }
 
 // mustReadString is a convenience function that casts mustRead
