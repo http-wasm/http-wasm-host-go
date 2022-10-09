@@ -12,6 +12,30 @@ const (
 	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md
 	HostModule = "http-handler"
 
+	// FuncEnableFeatures tries to enable the given features and returns the
+	// Features bitflag supported by the host. This must be called prior to
+	// FuncNext to enable Features needed by the guest.
+	//
+	// This may be called prior to FuncHandle, for example inside a start
+	// function. Doing so reduces overhead per-call and also allows the guest
+	// to fail early on unsupported.
+	//
+	// If called during FuncHandle, any new features are only enabled for the
+	// scope of the current request. This allows fine-grained access to
+	// expensive features such as FeatureCaptureResponse.
+	//
+	// TODO: document on http-wasm-abi
+	FuncEnableFeatures = "enable_features"
+
+	// FuncGetConfig writes configuration from the host to memory if it exists
+	// and isn't larger than `buf-limit`. The result is its length in bytes.
+	//
+	// Note: Configuration is determined by the guest and is not necessarily
+	// UTF-8 encoded.
+	//
+	// TODO: document on http-wasm-abi
+	FuncGetConfig = "get_config"
+
 	// FuncLog logs a message to the host's logs.
 	//
 	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#log
@@ -30,11 +54,12 @@ const (
 	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#get-request-header
 	FuncGetRequestHeader = "get_request_header"
 
-	// FuncGetPath writes the path to memory if it exists and isn't larger than
-	// `buf-limit`. The result is length of the path in bytes.
+	// FuncGetPath writes the path to memory if it isn't larger than
+	// `buf-limit`. The result is its length in bytes.
 	//
 	// Note: The path does not include query parameters.
 	//
+	// TODO: update document on http-wasm-abi
 	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#get-path
 	FuncGetPath = "get_path"
 
@@ -48,36 +73,68 @@ const (
 	// FuncNext calls a downstream handler and blocks until it is finished
 	// processing.
 	//
-	// This is an alternative to calling FuncSetStatusCode or
-	// FuncSetResponseBody to construct the response in guest wasm.
+	// By default, whether the next handler flushes the response prior to
+	// returning is implementation-specific. If your handler needs to inspect
+	// or manipulate the downstream response, enable FeatureCaptureResponse via
+	// FuncEnableFeatures prior to calling this function.
 	//
-	// Note: Whether the next handler sends the response is implementation
-	// specific. Some implementations may flush the response before returning,
-	// while others schedule it for later.
-	//
+	// TODO: update existing document on http-wasm-abi
 	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#next
 	FuncNext = "next"
+
+	// FuncGetResponseHeader writes a header value to memory if it exists and
+	// isn't larger than `buf-limit`. The result is `1<<32|len`, where `len` is
+	// the bytes written, or zero if the header doesn't exist. This requires
+	// FeatureCaptureResponse.
+	//
+	// To enable FeatureCaptureResponse, FuncEnableFeatures prior to FuncNext.
+	// Doing otherwise, or calling before FuncNext will panic.
+	//
+	// TODO: document on http-wasm-abi
+	FuncGetResponseHeader = "get_response_header"
 
 	// FuncSetResponseHeader overwrites a response header with a given name to
 	// a value read from memory.
 	//
+	// To use this function after FuncNext, set FeatureCaptureResponse via
+	// FuncEnableFeatures. Otherwise, this can be called when FuncNext wasn't.
+	//
 	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#set-response-header
 	FuncSetResponseHeader = "set_response_header"
 
+	// FuncGetStatusCode gets the status code produced by FuncNext. This
+	// requires FeatureCaptureResponse.
+	//
+	// To enable FeatureCaptureResponse, FuncEnableFeatures prior to FuncNext.
+	// Doing otherwise, or calling before FuncNext will panic.
+	//
+	// TODO: document on http-wasm-abi
+	FuncGetStatusCode = "get_status_code"
+
 	// FuncSetStatusCode overrides the status code. The default is 200.
 	//
-	// This is an alternative to calling FuncNext. Calling this afterwards has
-	// undefined behavior.
+	// To use this function after FuncNext, set FeatureCaptureResponse via
+	// FuncEnableFeatures. Otherwise, this can be called when FuncNext wasn't.
 	//
 	// TODO: document on http-wasm-abi
 	FuncSetStatusCode = "set_status_code"
+
+	// FuncGetResponseBody writes the body written by FuncNext to memory if it
+	// exists and isn't larger than `buf-limit`. The result is its length in
+	// bytes. This requires FeatureCaptureResponse.
+	//
+	// To enable FeatureCaptureResponse, FuncEnableFeatures prior to FuncNext.
+	// Doing otherwise, or calling before FuncNext will panic.
+	//
+	// TODO: document on http-wasm-abi
+	FuncGetResponseBody = "get_response_body"
 
 	// FuncSetResponseBody overwrites the response body with a value read from
 	// memory. In doing so, this overwrites the "Content-Length" header with
 	// its length.
 	//
-	// This is an alternative to calling FuncNext. Calling this afterwards has
-	// undefined behavior.
+	// To use this function after FuncNext, set FeatureCaptureResponse via
+	// FuncEnableFeatures. Otherwise, this can be called when FuncNext wasn't.
 	//
 	// TODO: document on http-wasm-abi
 	FuncSetResponseBody = "set_response_body"

@@ -36,7 +36,14 @@ func Namespace(newNamespace NewNamespace) Option {
 }
 
 // GuestConfig is the configuration used to instantiate the guest.
-func GuestConfig(moduleConfig wazero.ModuleConfig) Option {
+func GuestConfig(guestConfig []byte) Option {
+	return func(h *internal.WazeroOptions) {
+		h.GuestConfig = guestConfig
+	}
+}
+
+// ModuleConfig is the configuration used to instantiate the guest.
+func ModuleConfig(moduleConfig wazero.ModuleConfig) Option {
 	return func(h *internal.WazeroOptions) {
 		h.ModuleConfig = moduleConfig
 	}

@@ -160,3 +160,53 @@ func Example_router() {
 	// hello world
 	// /a
 }
+
+func Example_redact() {
+	ctx := context.Background()
+
+	// Configure and compile the WebAssembly guest binary. In this case, it is
+	// an example response redact.
+	secret := "open sesame"
+	mw, err := NewMiddleware(ctx, test.RedactWasm,
+		httpwasm.GuestConfig([]byte(secret)))
+	if err != nil {
+		log.Panicln(err)
+	}
+	defer mw.Close(ctx)
+
+	var body string
+	serveBody := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Header.Set("Content-Type", "text/plain")
+		w.Write([]byte(body)) // nolint
+	})
+
+	// Wrap the real handler with an interceptor implemented in WebAssembly.
+	wrapped := mw.NewHandler(ctx, serveBody)
+
+	// Start the server with the wrapped handler.
+	ts := httptest.NewServer(wrapped)
+	defer ts.Close()
+
+	bodies := []string{
+		secret,
+		"hello world",
+		fmt.Sprintf("hello %s world", secret),
+	}
+
+	for _, b := range bodies {
+		body = b
+
+		resp, err := http.Get(ts.URL)
+		if err != nil {
+			log.Panicln(err)
+		}
+		defer resp.Body.Close()
+		content, _ := io.ReadAll(resp.Body)
+		fmt.Println(string(content))
+	}
+
+	// Output:
+	// ###########
+	// hello world
+	// hello ########### world
+}
