@@ -9,12 +9,12 @@ repository includes [http-handler ABI][3] middleware for various HTTP server
 libraries written in Go.
 
 * [nethttp](handler/nethttp): [net/http Handler][4]
-* [fasthttp](handler/fasthttp): [net/http RequestHandler][5]
 
 # WARNING: This is a proof of concept!
 
 The current maturity phase is proof of concept. Once this has a working example
-in [dapr][6], we will go back and revisit things intentionally deferred.
+in [coraza][5] and [dapr][6], we will go back and revisit things intentionally
+deferred.
 
 Meanwhile, minor details and test coverage will fall short of production
 standards. This helps us deliver the proof-of-concept faster and prevents
@@ -24,5 +24,5 @@ wasted energy in the case that the concept isn't acceptable at all.
 [2]: https://webassembly.org/
 [3]: https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md
 [4]: https://pkg.go.dev/net/http#Handler
-[5]: https://github.com/valyala/fasthttp
+[5]: https://github.com/corazawaf/coraza-proxy-wasm
 [6]: https://github.com/http-wasm/components-contrib/
