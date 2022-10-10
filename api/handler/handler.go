@@ -27,11 +27,11 @@ type Host interface {
 	// EnableFeatures implements the WebAssembly function export EnableFeatures.
 	EnableFeatures(ctx context.Context, features Features) Features
 
-	// GetPath implements the WebAssembly function export FuncGetPath.
-	GetPath(ctx context.Context) string
+	// GetURI implements the WebAssembly function export FuncGetURI.
+	GetURI(ctx context.Context) string
 
-	// SetPath implements the WebAssembly function export FuncSetPath.
-	SetPath(ctx context.Context, path string)
+	// SetURI implements the WebAssembly function export FuncSetURI.
+	SetURI(ctx context.Context, path string)
 
 	// GetRequestHeader implements the WebAssembly function export
 	// FuncGetRequestHeader. This returns false if the value doesn't exist.

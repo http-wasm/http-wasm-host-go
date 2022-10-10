@@ -54,21 +54,21 @@ const (
 	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#get-request-header
 	FuncGetRequestHeader = "get_request_header"
 
-	// FuncGetPath writes the path to memory if it isn't larger than
+	// FuncGetURI writes the path to memory if it isn't larger than
 	// `buf-limit`. The result is its length in bytes.
 	//
 	// Note: The path does not include query parameters.
 	//
 	// TODO: update document on http-wasm-abi
 	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#get-path
-	FuncGetPath = "get_path"
+	FuncGetURI = "get_uri"
 
-	// FuncSetPath Overwrites the request path with one read from memory.
+	// FuncSetURI Overwrites the request URI with one read from memory.
 	//
-	// Note: The path does not include query parameters.
+	// Note: The URI includes any query parameters.
 	//
-	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#set-path
-	FuncSetPath = "set_path"
+	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#set-uri
+	FuncSetURI = "set_uri"
 
 	// FuncNext calls a downstream handler and blocks until it is finished
 	// processing.
