@@ -2,6 +2,7 @@ package wasm
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	httpwasm "github.com/http-wasm/http-wasm-host-go"
@@ -16,7 +17,7 @@ type middleware struct {
 }
 
 func NewMiddleware(ctx context.Context, guest []byte, options ...httpwasm.Option) (Middleware, error) {
-	r, err := internalhandler.NewRuntime(ctx, guest, &host{}, options...)
+	r, err := internalhandler.NewRuntime(ctx, guest, host{}, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -25,43 +26,68 @@ func NewMiddleware(ctx context.Context, guest []byte, options ...httpwasm.Option
 
 type host struct{}
 
-// requestStateKey is a context.Context Value associated with a requestState
+// requestStateKey is a context.Context value associated with a requestState
 // pointer to the current request.
 type requestStateKey struct{}
 
 type requestState struct {
-	request    *http.Request
-	response   http.ResponseWriter
-	handleNext func()
+	w          http.ResponseWriter
+	r          *http.Request
+	next       http.Handler
+	calledNext bool
+	features   handler.Features
 }
 
-func withRequestState(ctx context.Context, response http.ResponseWriter, request *http.Request, next http.Handler) context.Context {
-	return context.WithValue(ctx, requestStateKey{}, &requestState{
-		request:    request,
-		response:   response,
-		handleNext: func() { next.ServeHTTP(response, request) },
-	})
+func (s *requestState) enableFeatures(features handler.Features) {
+	s.features = s.features.WithEnabled(features)
+	if !s.features.IsEnabled(handler.FeatureCaptureResponse) {
+		return
+	}
+	if _, ok := s.w.(*capturingResponseWriter); !ok { // don't double-wrap
+		s.w = &capturingResponseWriter{delegate: s.w}
+	}
+}
+
+func (s *requestState) handleNext() {
+	if s.calledNext {
+		panic("already called next")
+	}
+	s.calledNext = true
+	s.next.ServeHTTP(s.w, s.r)
 }
 
 func requestStateFromContext(ctx context.Context) *requestState {
 	return ctx.Value(requestStateKey{}).(*requestState)
 }
 
+// EnableFeatures implements the same method as documented on handler.Host.
+func (h host) EnableFeatures(ctx context.Context, features handler.Features) (result handler.Features) {
+	if s, ok := ctx.Value(requestStateKey{}).(*requestState); ok {
+		s.enableFeatures(features)
+		return s.features
+	} else if i, ok := ctx.Value(internalhandler.InitStateKey{}).(*internalhandler.InitState); ok {
+		i.Features = i.Features.WithEnabled(features)
+		return i.Features
+	} else {
+		panic("unexpected context state")
+	}
+}
+
 // GetPath implements the same method as documented on handler.Host.
 func (h host) GetPath(ctx context.Context) string {
-	r := requestStateFromContext(ctx).request
+	r := requestStateFromContext(ctx).r
 	return r.URL.Path
 }
 
 // SetPath implements the same method as documented on handler.Host.
 func (h host) SetPath(ctx context.Context, path string) {
-	r := requestStateFromContext(ctx).request
+	r := requestStateFromContext(ctx).r
 	r.URL.Path = path
 }
 
 // GetRequestHeader implements the same method as documented on handler.Host.
 func (h host) GetRequestHeader(ctx context.Context, name string) (string, bool) {
-	r := requestStateFromContext(ctx).request
+	r := requestStateFromContext(ctx).r
 	if values := r.Header.Values(name); len(values) == 0 {
 		return "", false
 	} else {
@@ -76,25 +102,60 @@ func (h host) Next(ctx context.Context) {
 
 // SetResponseHeader implements the same method as documented on handler.Host.
 func (h host) SetResponseHeader(ctx context.Context, name, value string) {
-	r := requestStateFromContext(ctx).response
-	r.Header().Set(name, value)
+	s := requestStateFromContext(ctx)
+	if s.calledNext && !s.features.IsEnabled(handler.FeatureCaptureResponse) {
+		panic("already called next")
+	}
+	s.w.Header().Set(name, value)
+}
+
+// GetStatusCode implements the same method as documented on handler.Host.
+func (h host) GetStatusCode(ctx context.Context) uint32 {
+	s := requestStateFromContext(ctx)
+	if w, ok := s.w.(*capturingResponseWriter); ok {
+		return w.statusCode
+	}
+	panic(fmt.Errorf("can't read back status code unless %s is enabled",
+		handler.FeatureCaptureResponse))
 }
 
 // SetStatusCode implements the same method as documented on handler.Host.
 func (h host) SetStatusCode(ctx context.Context, statusCode uint32) {
-	r := requestStateFromContext(ctx).response
-	r.WriteHeader(int(statusCode))
+	s := requestStateFromContext(ctx)
+	if w, ok := s.w.(*capturingResponseWriter); ok {
+		w.statusCode = statusCode
+	} else if !s.calledNext {
+		s.w.WriteHeader(int(statusCode))
+	} else {
+		panic("already called next")
+	}
+}
+
+// GetResponseBody implements the same method as documented on handler.Host.
+func (h host) GetResponseBody(ctx context.Context) []byte {
+	s := requestStateFromContext(ctx)
+	if w, ok := s.w.(*capturingResponseWriter); ok {
+		return w.body
+	}
+	panic(fmt.Errorf("can't read back response body unless %s is enabled",
+		handler.FeatureCaptureResponse))
 }
 
 // SetResponseBody implements the same method as documented on handler.Host.
 func (h host) SetResponseBody(ctx context.Context, body []byte) {
-	r := requestStateFromContext(ctx).response
-	r.Write(body) // nolint
+	s := requestStateFromContext(ctx)
+	if w, ok := s.w.(*capturingResponseWriter); ok {
+		w.body = body
+	} else if !s.calledNext {
+		s.w.Write(body) // nolint
+	} else {
+		panic("already called next")
+	}
 }
 
 // NewHandler implements the same method as documented on handler.Middleware.
-func (w *middleware) NewHandler(ctx context.Context, next http.Handler) http.Handler {
-	return &guest{handle: w.runtime.Handle, next: next}
+func (w *middleware) NewHandler(_ context.Context, next http.Handler) http.Handler {
+	return &guest{handle: w.runtime.Handle, next: next, features: w.runtime.Features}
 }
 
 // Close implements the same method as documented on handler.Middleware.
@@ -103,18 +164,23 @@ func (w *middleware) Close(ctx context.Context) error {
 }
 
 type guest struct {
-	handle func(ctx context.Context) (err error)
-	next   http.Handler
+	handle   func(ctx context.Context) (err error)
+	next     http.Handler
+	features handler.Features
 }
 
 // ServeHTTP implements http.Handler
-func (w *guest) ServeHTTP(response http.ResponseWriter, request *http.Request) {
+func (g *guest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// The guest Wasm actually handles the request. As it may call host
 	// functions, we add context parameters of the current request.
-	ctx := withRequestState(request.Context(), response, request, w.next)
-	if err := w.handle(ctx); err != nil {
+	s := &requestState{w: w, r: r, next: g.next}
+	ctx := context.WithValue(r.Context(), requestStateKey{}, s)
+	(host{}).EnableFeatures(ctx, g.features)
+	if err := g.handle(ctx); err != nil {
 		// TODO: after testing, shouldn't send errors into the HTTP response.
-		response.WriteHeader(500)
-		response.Write([]byte(err.Error())) // nolint
+		w.WriteHeader(500)
+		w.Write([]byte(err.Error())) // nolint
+	} else if d, ok := s.w.(*capturingResponseWriter); ok {
+		d.release()
 	}
 }

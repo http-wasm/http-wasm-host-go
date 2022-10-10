@@ -24,6 +24,9 @@ type Middleware[H any] interface {
 // Host implements the host side of the WebAssembly module named HostModule.
 // These callbacks are used by the guest function export FuncHandle.
 type Host interface {
+	// EnableFeatures implements the WebAssembly function export EnableFeatures.
+	EnableFeatures(ctx context.Context, features Features) Features
+
 	// GetPath implements the WebAssembly function export FuncGetPath.
 	GetPath(ctx context.Context) string
 
@@ -42,9 +45,17 @@ type Host interface {
 	// the next handler.
 	Next(ctx context.Context)
 
+	// GetStatusCode implements the WebAssembly function export
+	// FuncGetStatusCode.
+	GetStatusCode(ctx context.Context) uint32
+
 	// SetStatusCode implements the WebAssembly function export
 	// FuncSetStatusCode.
 	SetStatusCode(ctx context.Context, statusCode uint32)
+
+	// GetResponseBody implements the WebAssembly function export
+	// FuncGetResponseBody.
+	GetResponseBody(ctx context.Context) []byte
 
 	// SetResponseBody implements the WebAssembly function export
 	// FuncSetResponseBody.

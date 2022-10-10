@@ -21,9 +21,19 @@ type Runtime struct {
 	runtime                 wazero.Runtime
 	hostModule, guestModule wazero.CompiledModule
 	newNamespace            httpwasm.NewNamespace
-	config                  wazero.ModuleConfig
+	moduleConfig            wazero.ModuleConfig
+	guestConfig             []byte
 	logFn                   api.LogFunc
 	pool                    sync.Pool
+	Features                handler.Features
+}
+
+// InitStateKey is a context.Context value associated with a InitState pointer
+// to an initializing guest.
+type InitStateKey struct{}
+
+type InitState struct {
+	Features handler.Features
 }
 
 func NewRuntime(ctx context.Context, guest []byte, host handler.Host, options ...httpwasm.Option) (*Runtime, error) {
@@ -42,7 +52,14 @@ func NewRuntime(ctx context.Context, guest []byte, host handler.Host, options ..
 		return nil, fmt.Errorf("wasm: error creating runtime: %w", err)
 	}
 
-	r := &Runtime{host: host, runtime: wr, newNamespace: o.NewNamespace, config: o.ModuleConfig, logFn: o.Logger}
+	r := &Runtime{
+		host:         host,
+		runtime:      wr,
+		newNamespace: o.NewNamespace,
+		moduleConfig: o.ModuleConfig,
+		guestConfig:  o.GuestConfig,
+		logFn:        o.Logger,
+	}
 
 	if r.hostModule, err = r.compileHost(ctx); err != nil {
 		_ = r.Close(ctx)
@@ -55,13 +72,15 @@ func NewRuntime(ctx context.Context, guest []byte, host handler.Host, options ..
 	}
 
 	// Eagerly add a guest to the pool to catch initialization failure.
-	if g, err := r.newGuest(ctx); err != nil {
+	is := &InitState{}
+	if g, err := r.newGuest(context.WithValue(ctx, InitStateKey{}, is)); err != nil {
 		_ = r.Close(ctx)
 		return nil, err
 	} else {
 		r.pool.Put(g)
 	}
 
+	r.Features = is.Features
 	return r, nil
 }
 
@@ -119,7 +138,7 @@ func (r *Runtime) newGuest(ctx context.Context) (*guest, error) {
 		return nil, fmt.Errorf("wasm: error instantiating host: %w", err)
 	}
 
-	g, err := ns.InstantiateModule(ctx, r.guestModule, r.config)
+	g, err := ns.InstantiateModule(ctx, r.guestModule, r.moduleConfig)
 	if err != nil {
 		_ = ns.Close(ctx)
 		return nil, fmt.Errorf("wasm: error instantiating guest: %w", err)
@@ -134,48 +153,56 @@ func (g *guest) handle(ctx context.Context) (err error) {
 	return
 }
 
+// enableFeatures implements the WebAssembly host function handler.FuncEnableFeatures.
+func (r *Runtime) enableFeatures(ctx context.Context, features uint64) uint64 {
+	f := r.host.EnableFeatures(ctx, handler.Features(features))
+	return uint64(f)
+}
+
+// getConfig implements the WebAssembly host function handler.FuncGetConfig.
+func (r *Runtime) getConfig(ctx context.Context, mod wazeroapi.Module,
+	buf, bufLimit uint32) (configLen uint32) {
+	return writeIfUnderLimit(ctx, mod, buf, bufLimit, r.guestConfig)
+}
+
 // log implements the WebAssembly host function handler.FuncLog.
 func (r *Runtime) log(ctx context.Context, mod wazeroapi.Module,
 	message, messageLen uint32) {
+	if messageLen == 0 {
+		return // nothing to write
+	}
 	m := mustReadString(ctx, mod.Memory(), "message", message, messageLen)
 	r.logFn(ctx, m)
 }
 
 // getPath implements the WebAssembly host function handler.FuncGetPath.
 func (r *Runtime) getPath(ctx context.Context, mod wazeroapi.Module,
-	buf, bufLimit uint32) (result uint32) {
+	buf, bufLimit uint32) (pathLen uint32) {
 	path := r.host.GetPath(ctx)
-	result = uint32(len(path))
-	if result > bufLimit {
-		return // caller can retry with a larger bufLimit
-	}
-	mod.Memory().WriteString(ctx, buf, path)
-	return
+	return writeStringIfUnderLimit(ctx, mod, buf, bufLimit, path)
 }
 
 // getRequestHeader implements the WebAssembly host function
 // handler.FuncSetPath.
 func (r *Runtime) setPath(ctx context.Context, mod wazeroapi.Module,
 	path, pathLen uint32) {
-	p := mustReadString(ctx, mod.Memory(), "path", path, pathLen)
+	var p string
+	if pathLen > 0 {
+		p = mustReadString(ctx, mod.Memory(), "path", path, pathLen)
+	}
 	r.host.SetPath(ctx, p)
 }
 
 // getRequestHeader implements the WebAssembly host function
 // handler.FuncGetRequestHeader.
 func (r *Runtime) getRequestHeader(ctx context.Context, mod wazeroapi.Module,
-	name, nameLen, value, valueLimit uint32) (result uint64) {
+	name, nameLen, buf, bufLimit uint32) (result uint64) {
 	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
 	v, ok := r.host.GetRequestHeader(ctx, n)
 	if !ok {
 		return // value doesn't exist
 	}
-	length := uint32(len(v))
-	result = uint64(1<<32) | uint64(length)
-	if length > valueLimit {
-		return // caller can retry with a larger bufLimit
-	}
-	mod.Memory().WriteString(ctx, value, v)
+	result = uint64(1<<32) | uint64(writeStringIfUnderLimit(ctx, mod, buf, bufLimit, v))
 	return
 }
 
@@ -188,10 +215,24 @@ func (r *Runtime) setResponseHeader(ctx context.Context, mod wazeroapi.Module,
 	r.host.SetResponseHeader(ctx, n, v)
 }
 
+// getStatusCode implements the WebAssembly host function
+// handler.FuncGetStatusCode.
+func (r *Runtime) getStatusCode(ctx context.Context) uint32 {
+	return r.host.GetStatusCode(ctx)
+}
+
 // setStatusCode implements the WebAssembly host function
 // handler.FuncSetStatusCode.
 func (r *Runtime) setStatusCode(ctx context.Context, statusCode uint32) {
 	r.host.SetStatusCode(ctx, statusCode)
+}
+
+// getResponseBody implements the WebAssembly host function
+// handler.FuncGetResponseBody.
+func (r *Runtime) getResponseBody(ctx context.Context, mod wazeroapi.Module,
+	buf, bufLimit uint32) (bodyLen uint32) {
+	body := r.host.GetResponseBody(ctx)
+	return writeIfUnderLimit(ctx, mod, buf, bufLimit, body)
 }
 
 // setResponseBody implements the WebAssembly host function
@@ -209,6 +250,10 @@ func (r *Runtime) setResponseBody(ctx context.Context, mod wazeroapi.Module,
 
 func (r *Runtime) compileHost(ctx context.Context) (wazero.CompiledModule, error) {
 	if compiled, err := r.runtime.NewHostModuleBuilder(handler.HostModule).
+		ExportFunction(handler.FuncEnableFeatures, r.enableFeatures,
+			handler.FuncEnableFeatures, "features").
+		ExportFunction(handler.FuncGetConfig, r.getConfig,
+			handler.FuncGetConfig, "buf", "buf_limit").
 		ExportFunction(handler.FuncLog, r.log,
 			handler.FuncLog, "message", "message_len").
 		ExportFunction(handler.FuncGetPath, r.getPath,
@@ -219,8 +264,12 @@ func (r *Runtime) compileHost(ctx context.Context) (wazero.CompiledModule, error
 			handler.FuncGetRequestHeader, "name", "name_len", "buf", "buf_limit").
 		ExportFunction(handler.FuncSetResponseHeader, r.setResponseHeader,
 			handler.FuncSetResponseHeader, "name", "name_len", "value", "value_len").
+		ExportFunction(handler.FuncGetStatusCode, r.getStatusCode,
+			handler.FuncGetStatusCode).
 		ExportFunction(handler.FuncSetStatusCode, r.setStatusCode,
 			handler.FuncSetStatusCode, "status_code").
+		ExportFunction(handler.FuncGetResponseBody, r.getResponseBody,
+			handler.FuncGetResponseBody, "buf", "buf_limit").
 		ExportFunction(handler.FuncSetResponseBody, r.setResponseBody,
 			handler.FuncSetResponseBody, "body", "body_len").
 		ExportFunction(handler.FuncNext, r.host.Next,
@@ -252,4 +301,26 @@ func mustRead(ctx context.Context, mem wazeroapi.Memory, fieldName string, offse
 		panic(fmt.Errorf("out of memory reading %s", fieldName))
 	}
 	return buf
+}
+
+func writeIfUnderLimit(ctx context.Context, mod wazeroapi.Module, offset, limit uint32, v []byte) (vLen uint32) {
+	vLen = uint32(len(v))
+	if vLen > limit {
+		return // caller can retry with a larger limit
+	} else if vLen == 0 {
+		return // nothing to write
+	}
+	mod.Memory().Write(ctx, offset, v)
+	return
+}
+
+func writeStringIfUnderLimit(ctx context.Context, mod wazeroapi.Module, offset, limit uint32, v string) (vLen uint32) {
+	vLen = uint32(len(v))
+	if vLen > limit {
+		return // caller can retry with a larger limit
+	} else if vLen == 0 {
+		return // nothing to write
+	}
+	mod.Memory().WriteString(ctx, offset, v)
+	return
 }

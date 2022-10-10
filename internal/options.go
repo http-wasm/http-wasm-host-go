@@ -12,6 +12,7 @@ import (
 type WazeroOptions struct {
 	NewRuntime   func(context.Context) (wazero.Runtime, error)
 	NewNamespace func(context.Context, wazero.Runtime) (wazero.Namespace, error)
+	GuestConfig  []byte
 	ModuleConfig wazero.ModuleConfig
 	Logger       api.LogFunc
 }
