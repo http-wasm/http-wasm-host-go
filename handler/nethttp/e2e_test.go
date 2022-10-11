@@ -40,7 +40,6 @@ func TestConfig(t *testing.T) {
 			}
 			defer mw.Close(testCtx)
 
-			// Create the real request handler.
 			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				// ensure the request body is readable
 				body, err := io.ReadAll(r.Body)
