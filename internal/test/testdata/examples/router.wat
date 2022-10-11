@@ -6,7 +6,7 @@
   ;; the buffer size limit. The result is the actual URI length in bytes.
   (import "http-handler" "get_uri" (func $get_uri
     (param $buf i32) (param $buf_limit i32)
-    (result (; uri_len ;) i32)))
+    (result (; len ;) i32)))
 
   ;; set_uri overwrites the request URI with one read from memory.
   (import "http-handler" "set_uri" (func $set_uri

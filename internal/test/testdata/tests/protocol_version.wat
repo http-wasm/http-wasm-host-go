@@ -2,7 +2,7 @@
 
   (import "http-handler" "get_protocol_version" (func $get_protocol_version
     (param $buf i32) (param $buf_limit i32)
-    (result (; protocol_version_len ;) i32)))
+    (result (; len ;) i32)))
 
   (import "http-handler" "set_response_body" (func $set_response_body
     (param $body i32)

@@ -5,8 +5,8 @@
   ;; get_body writes the body to memory if it exists and isn't larger than
   ;; $buf_limit. The result is the length of the body in bytes.
   (type $get_body (func
-    (param $body i32) (param $body_limit i32)
-    (result (; body_len ;) i32)))
+    (param $buf i32) (param $buf_limit i32)
+    (result (; len ;) i32)))
 
   ;; enable_features tries to enable the given features and returns the entire
   ;; feature bitflag supported by the host.
@@ -18,7 +18,7 @@
   ;; isn't larger than $buf_limit. The result is its length in bytes.
   (import "http-handler" "get_config" (func $get_config
     (param $buf i32) (param $buf_limit i32)
-    (result (; config_len ;) i32)))
+    (result (; len ;) i32)))
 
   ;; get_request_body consumes the body unless $feature_buffer_request is
   ;; enabled.
@@ -28,7 +28,7 @@
   ;; set_request_body overwrites the request body with a value read from memory.
   (import "http-handler" "set_request_body" (func $set_request_body
     (param $body i32)
-    (param $body_len i32)))
+    (param $len i32)))
 
   ;; next dispatches control to the next handler on the host.
   (import "http-handler" "next" (func $next))
@@ -40,7 +40,7 @@
   ;; set_response_body overwrites the response body with a value read from memory.
   (import "http-handler" "set_response_body" (func $set_response_body
     (param $body i32)
-    (param $body_len i32)))
+    (param $len i32)))
 
   ;; http-wasm guests are required to export "memory", so that imported
   ;; functions like $get_response_body can read memory.
@@ -101,48 +101,48 @@
 
   ;; must_get_body returns the length of the body using the given function
   ;; table index or fails if out of memory.
-  (func $must_get_body (param $body_fn i32) (result (; body_len ;) i32)
-    (local $body_limit i32)
-    (local $body_len i32)
+  (func $must_get_body (param $body_fn i32) (result (; len ;) i32)
+    (local $limit i32)
+    (local $len i32)
 
-    ;; set body_limit to the amount of available memory without growing.
-    (local.set $body_limit (i32.sub
+    ;; set limit to the amount of available memory without growing.
+    (local.set $limit (i32.sub
       (i32.mul (memory.size) (i32.const 65536))
       (global.get $body)))
 
-    ;; body_len = table[body_fn](body, buf_limit)
-    (local.set $body_len
-      (call_indirect (type $get_body) (global.get $body) (local.get $body_limit) (local.get $body_fn)))
+    ;; len = table[body_fn](body, buf_limit)
+    (local.set $len
+      (call_indirect (type $get_body) (global.get $body) (local.get $limit) (local.get $body_fn)))
 
-    ;; if body_len > body_limit { panic }
-    (if (i32.gt_s (local.get $body_len) (local.get $body_limit))
+    ;; if len > limit { panic }
+    (if (i32.gt_s (local.get $len) (local.get $limit))
       (then unreachable)) ;; out of memory
 
-    (local.get $body_len))
+    (local.get $len))
 
   ;; handle implements a simple HTTP router.
   (func $handle (export "handle")
-    (local $body_len i32)
+    (local $len i32)
 
     ;; load the request body from the upstream handler into memory.
-    (local.set $body_len
+    (local.set $len
       (call $must_get_body (i32.const 0)))
 
     ;; if redaction affected the copy of the request in memory...
-    (if (call $redact (global.get $body) (local.get $body_len))
+    (if (call $redact (global.get $body) (local.get $len))
       (then ;; overwrite the request body on the host with the redacted one.
-        (call $set_request_body (global.get $body) (local.get $body_len))))
+        (call $set_request_body (global.get $body) (local.get $len))))
 
     (call $next) ;; dispatch with $feature_buffer_response enabled.
 
     ;; load the response body from the downstream handler into memory.
-    (local.set $body_len
+    (local.set $len
       (call $must_get_body (i32.const 1)))
 
     ;; if redaction affected the copy of the response in memory...
-    (if (call $redact (global.get $body) (local.get $body_len))
+    (if (call $redact (global.get $body) (local.get $len))
       (then ;; overwrite the response body on the host with the redacted one.
-        (call $set_response_body (global.get $body) (local.get $body_len)))))
+        (call $set_response_body (global.get $body) (local.get $len)))))
 
   ;; redact inline replaces any secrets in the memory region with hashes (#).
   (func $redact (param $ptr i32) (param $len i32) (result (; redacted ;) i32)

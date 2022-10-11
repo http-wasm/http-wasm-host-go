@@ -12,7 +12,7 @@
   ;; isn't larger than $buf_limit. The result is its length in bytes.
   (import "http-handler" "get_config" (func $get_config
     (param $buf i32) (param $buf_limit i32)
-    (result (; config_len ;) i32)))
+    (result (; len ;) i32)))
 
   ;; next dispatches control to the next handler on the host.
   (import "http-handler" "next" (func $next))
