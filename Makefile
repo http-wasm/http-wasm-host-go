@@ -1,8 +1,8 @@
 goimports := golang.org/x/tools/cmd/goimports@v0.1.12
 golangci_lint := github.com/golangci/golangci-lint/cmd/golangci-lint@v1.49.0
 
-.PHONY: build.test
-build.test:
+.PHONY: build.testdata
+build.testdata:
 	@$(MAKE) build.wat
 
 wat_sources := $(wildcard internal/test/testdata/*.wat)

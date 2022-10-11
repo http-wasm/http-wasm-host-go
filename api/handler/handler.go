@@ -37,9 +37,13 @@ type Host interface {
 	// FuncGetRequestHeader. This returns false if the value doesn't exist.
 	GetRequestHeader(ctx context.Context, name string) (string, bool)
 
-	// SetResponseHeader implements the WebAssembly function export
-	// FuncSetResponseHeader.
-	SetResponseHeader(ctx context.Context, name, value string)
+	// GetRequestBody implements the WebAssembly function export
+	// FuncGetRequestBody.
+	GetRequestBody(ctx context.Context) []byte
+
+	// SetRequestBody implements the WebAssembly function export
+	// FuncSetRequestBody.
+	SetRequestBody(ctx context.Context, body []byte)
 
 	// Next implements the WebAssembly function export FuncNext, which invokes
 	// the next handler.
@@ -52,6 +56,10 @@ type Host interface {
 	// SetStatusCode implements the WebAssembly function export
 	// FuncSetStatusCode.
 	SetStatusCode(ctx context.Context, statusCode uint32)
+
+	// SetResponseHeader implements the WebAssembly function export
+	// FuncSetResponseHeader.
+	SetResponseHeader(ctx context.Context, name, value string)
 
 	// GetResponseBody implements the WebAssembly function export
 	// FuncGetResponseBody.

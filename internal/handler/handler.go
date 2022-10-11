@@ -206,13 +206,25 @@ func (r *Runtime) getRequestHeader(ctx context.Context, mod wazeroapi.Module,
 	return
 }
 
-// setResponseHeader implements the WebAssembly host function
-// handler.FuncRequestHeader.
-func (r *Runtime) setResponseHeader(ctx context.Context, mod wazeroapi.Module,
-	name, nameLen, value, valueLen uint32) {
-	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
-	v := mustReadString(ctx, mod.Memory(), "value", value, valueLen)
-	r.host.SetResponseHeader(ctx, n, v)
+// getRequestBody implements the WebAssembly host function
+// handler.FuncGetRequestBody.
+func (r *Runtime) getRequestBody(ctx context.Context, mod wazeroapi.Module,
+	buf, bufLimit uint32) (bodyLen uint32) {
+	body := r.host.GetRequestBody(ctx)
+	return writeIfUnderLimit(ctx, mod, buf, bufLimit, body)
+}
+
+// setRequestBody implements the WebAssembly host function
+// handler.FuncSetRequestBody.
+func (r *Runtime) setRequestBody(ctx context.Context, mod wazeroapi.Module,
+	body, bodyLen uint32) {
+	var b []byte
+	if bodyLen == 0 {
+		b = emptyBody // overwrite with empty is supported
+	} else {
+		b = mustRead(ctx, mod.Memory(), "body", body, bodyLen)
+	}
+	r.host.SetRequestBody(ctx, b)
 }
 
 // getStatusCode implements the WebAssembly host function
@@ -225,6 +237,15 @@ func (r *Runtime) getStatusCode(ctx context.Context) uint32 {
 // handler.FuncSetStatusCode.
 func (r *Runtime) setStatusCode(ctx context.Context, statusCode uint32) {
 	r.host.SetStatusCode(ctx, statusCode)
+}
+
+// setResponseHeader implements the WebAssembly host function
+// handler.FuncRequestHeader.
+func (r *Runtime) setResponseHeader(ctx context.Context, mod wazeroapi.Module,
+	name, nameLen, value, valueLen uint32) {
+	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
+	v := mustReadString(ctx, mod.Memory(), "value", value, valueLen)
+	r.host.SetResponseHeader(ctx, n, v)
 }
 
 // getResponseBody implements the WebAssembly host function
@@ -241,7 +262,7 @@ func (r *Runtime) setResponseBody(ctx context.Context, mod wazeroapi.Module,
 	body, bodyLen uint32) {
 	var b []byte
 	if bodyLen == 0 {
-		b = emptyBody
+		b = emptyBody // overwrite with empty is supported
 	} else {
 		b = mustRead(ctx, mod.Memory(), "body", body, bodyLen)
 	}
@@ -262,18 +283,22 @@ func (r *Runtime) compileHost(ctx context.Context) (wazero.CompiledModule, error
 			handler.FuncSetURI, "uri", "uri_len").
 		ExportFunction(handler.FuncGetRequestHeader, r.getRequestHeader,
 			handler.FuncGetRequestHeader, "name", "name_len", "buf", "buf_limit").
-		ExportFunction(handler.FuncSetResponseHeader, r.setResponseHeader,
-			handler.FuncSetResponseHeader, "name", "name_len", "value", "value_len").
+		ExportFunction(handler.FuncGetRequestBody, r.getRequestBody,
+			handler.FuncGetRequestBody, "buf", "buf_limit").
+		ExportFunction(handler.FuncSetRequestBody, r.setRequestBody,
+			handler.FuncSetRequestBody, "body", "body_len").
+		ExportFunction(handler.FuncNext, r.host.Next,
+			handler.FuncNext).
 		ExportFunction(handler.FuncGetStatusCode, r.getStatusCode,
 			handler.FuncGetStatusCode).
 		ExportFunction(handler.FuncSetStatusCode, r.setStatusCode,
 			handler.FuncSetStatusCode, "status_code").
+		ExportFunction(handler.FuncSetResponseHeader, r.setResponseHeader,
+			handler.FuncSetResponseHeader, "name", "name_len", "value", "value_len").
 		ExportFunction(handler.FuncGetResponseBody, r.getResponseBody,
 			handler.FuncGetResponseBody, "buf", "buf_limit").
 		ExportFunction(handler.FuncSetResponseBody, r.setResponseBody,
 			handler.FuncSetResponseBody, "body", "body_len").
-		ExportFunction(handler.FuncNext, r.host.Next,
-			handler.FuncNext).
 		Compile(ctx); err != nil {
 		return nil, fmt.Errorf("wasm: error compiling host: %w", err)
 	} else {
