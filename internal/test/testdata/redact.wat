@@ -2,6 +2,12 @@
 ;; how a handler works and that it is decoupled from other ABI such as WASI.
 ;; Most users will prefer a higher-level language such as C, Rust or TinyGo.
 (module $redact
+  ;; get_body writes the body to memory if it exists and isn't larger than
+  ;; $buf_limit. The result is the length of the body in bytes.
+  (type $get_body (func
+    (param $body i32) (param $body_limit i32)
+    (result (; body_len ;) i32)))
+
   ;; enable_features tries to enable the given features and returns the entire
   ;; feature bitflag supported by the host.
   (import "http-handler" "enable_features" (func $enable_features
@@ -14,15 +20,22 @@
     (param $buf i32) (param $buf_limit i32)
     (result (; config_len ;) i32)))
 
+  ;; get_request_body consumes the body unless $feature_buffer_request is
+  ;; enabled.
+  (import "http-handler" "get_request_body" (func $get_request_body
+    (type $get_body)))
+
+  ;; set_request_body overwrites the request body with a value read from memory.
+  (import "http-handler" "set_request_body" (func $set_request_body
+    (param $body i32)
+    (param $body_len i32)))
+
   ;; next dispatches control to the next handler on the host.
   (import "http-handler" "next" (func $next))
 
-  ;; get_response_body writes the body written by $next to memory if it exists
-  ;; and isn't larger than $buf_limit. The result is the length of the body in
-  ;; bytes. This requires $feature_buffer_response.
+  ;; get_response_body requires $feature_buffer_response.
   (import "http-handler" "get_response_body" (func $get_response_body
-    (param $body i32) (param $body_limit i32)
-    (result (; body_len ;) i32)))
+    (type $get_body)))
 
   ;; set_response_body overwrites the response body with a value read from memory.
   (import "http-handler" "set_response_body" (func $set_response_body
@@ -33,8 +46,10 @@
   ;; functions like $get_response_body can read memory.
   (memory (export "memory") 1 (; 1 page==64KB ;))
 
-  ;; feature_buffer_response is the feature flag for buffering the response.
-  (global $feature_buffer_response i64 (i64.const 2))
+  ;; define a function table for getting a request or response body.
+  (table 8 funcref)
+  (elem (i32.const 0) $get_request_body)
+  (elem (i32.const 1) $get_response_body)
 
   ;; body is the memory offset past any initialization data.
   (global $body i32 (i32.const 1024))
@@ -61,26 +76,32 @@
     (if (i32.eqz (global.get $secret_len))
       (then unreachable)))
 
-  ;; must_enable_buffer_response ensures we can read the response from $next.
-  (func $must_enable_buffer_response
-    ;; enabled_features := enable_features(feature_buffer_response)
-    (local $enabled_features i64)
-    (local.set $enabled_features
-      (call $enable_features (global.get $feature_buffer_response)))
+  ;; required_features := feature_buffer_request|feature_buffer_response
+  (global $required_features i64 (i64.const 3))
 
-    ;; if enabled_features&feature_buffer_response == 0 { panic }
+  ;; must_enable_buffering ensures we can inspect request and response bodies
+  ;; without interfering with the next handler.
+  (func $must_enable_buffering
+    (local $enabled_features i64)
+
+    ;; enabled_features := enable_features(required_features)
+    (local.set $enabled_features
+      (call $enable_features (global.get $required_features)))
+
+    ;; if enabled_features&required_features == 0 { panic }
     (if (i64.eqz (i64.and
-          (global.get $feature_buffer_response)
-          (local.get $enabled_features)))
+          (local.get $enabled_features)
+          (global.get $required_features)))
       (then unreachable)))
 
   (start $main)
   (func $main
-    (call $must_enable_buffer_response)
+    (call $must_enable_buffering)
     (call $must_read_secret))
 
-  ;; must_get_response_body fails if $get_response_body runs out of memory.
-  (func $must_get_response_body (result (; body_len ;) i32)
+  ;; must_get_body returns the length of the body using the given function
+  ;; table index or fails if out of memory.
+  (func $must_get_body (param $body_fn i32) (result (; body_len ;) i32)
     (local $body_limit i32)
     (local $body_len i32)
 
@@ -89,9 +110,9 @@
       (i32.mul (memory.size) (i32.const 65536))
       (global.get $body)))
 
-    ;; body_len = get_response_body(body, buf_limit)
+    ;; body_len = table[body_fn](body, buf_limit)
     (local.set $body_len
-      (call $get_response_body (global.get $body) (local.get $body_limit)))
+      (call_indirect (type $get_body) (global.get $body) (local.get $body_limit) (local.get $body_fn)))
 
     ;; if body_len > body_limit { panic }
     (if (i32.gt_s (local.get $body_len) (local.get $body_limit))
@@ -103,11 +124,20 @@
   (func $handle (export "handle")
     (local $body_len i32)
 
+    ;; load the request body from the upstream handler into memory.
+    (local.set $body_len
+      (call $must_get_body (i32.const 0)))
+
+    ;; if redaction affected the copy of the request in memory...
+    (if (call $redact (global.get $body) (local.get $body_len))
+      (then ;; overwrite the request body on the host with the redacted one.
+        (call $set_request_body (global.get $body) (local.get $body_len))))
+
     (call $next) ;; dispatch with $feature_buffer_response enabled.
 
     ;; load the response body from the downstream handler into memory.
     (local.set $body_len
-      (call $must_get_response_body))
+      (call $must_get_body (i32.const 1)))
 
     ;; if redaction affected the copy of the response in memory...
     (if (call $redact (global.get $body) (local.get $body_len))

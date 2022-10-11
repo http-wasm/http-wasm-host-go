@@ -202,6 +202,8 @@ func Example_redact() {
 
 	var body string
 	serveBody := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		content, _ := io.ReadAll(r.Body)
+		fmt.Println(string(content))
 		r.Header.Set("Content-Type", "text/plain")
 		w.Write([]byte(body)) // nolint
 	})
@@ -222,7 +224,7 @@ func Example_redact() {
 	for _, b := range bodies {
 		body = b
 
-		resp, err := ts.Client().Get(ts.URL)
+		resp, err := ts.Client().Post(ts.URL, "text/plain", strings.NewReader(body))
 		if err != nil {
 			log.Panicln(err)
 		}
@@ -231,8 +233,13 @@ func Example_redact() {
 		fmt.Println(string(content))
 	}
 
+	// The below proves redaction worked for both request and response bodies!
+
 	// Output:
 	// ###########
+	// ###########
 	// hello world
+	// hello world
+	// hello ########### world
 	// hello ########### world
 }
