@@ -42,11 +42,18 @@
     (local.set $enabled_features
       (call $enable_features (local.get $required_features)))
 
-    ;; if enabled_features&required_features == 0 { panic }
-    (if (i64.eqz (i64.and
+    ;; if required_features == 0
+    (if (i64.eqz (local.get $required_features))
+      ;; if enabled_features != 0 { panic }
+      (then (if (i64.ne
+          (local.get $enabled_features)
+          (i64.const 0))
+        (then unreachable)))
+      ;; else if enabled_features&required_features == 0 { panic }
+      (else (if (i64.eqz (i64.and
           (local.get $enabled_features)
           (local.get $required_features)))
-      (then unreachable)))
+        (then unreachable)))))
 
   (start $must_enable_features)
 )

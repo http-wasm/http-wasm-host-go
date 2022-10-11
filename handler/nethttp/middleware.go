@@ -43,11 +43,13 @@ type requestState struct {
 
 func (s *requestState) enableFeatures(features handler.Features) {
 	s.features = s.features.WithEnabled(features)
-	if !s.features.IsEnabled(handler.FeatureBufferResponse) {
-		return
+	if s.features.IsEnabled(handler.FeatureBufferResponse) {
+		if _, ok := s.w.(*bufferingResponseWriter); !ok { // don't double-wrap
+			s.w = &bufferingResponseWriter{delegate: s.w}
+		}
 	}
-	if _, ok := s.w.(*bufferingResponseWriter); !ok { // don't double-wrap
-		s.w = &bufferingResponseWriter{delegate: s.w}
+	if features.IsEnabled(handler.FeatureBufferRequest) {
+		s.r.Body = &bufferingRequestBody{delegate: s.r.Body}
 	}
 }
 
@@ -61,7 +63,7 @@ func (s *requestState) handleNext() {
 	// before calling downstream.
 	if br, ok := s.r.Body.(*bufferingRequestBody); ok {
 		if br.buffer.Len() == 0 {
-			s.r.Body = http.NoBody
+			s.r.Body = br.delegate
 		} else {
 			br.Close() // nolint
 			s.r.Body = io.NopCloser(&br.buffer)
@@ -222,10 +224,7 @@ func (g *guest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// functions, we add context parameters of the current request.
 	s := &requestState{w: w, r: r, next: g.next}
 	ctx := context.WithValue(r.Context(), requestStateKey{}, s)
-	features := (host{}).EnableFeatures(ctx, g.features)
-	if features.IsEnabled(handler.FeatureBufferRequest) {
-		s.r.Body = &bufferingRequestBody{delegate: r.Body}
-	}
+	(host{}).EnableFeatures(ctx, g.features)
 	if err := g.handle(ctx); err != nil {
 		// TODO: after testing, shouldn't send errors into the HTTP response.
 		w.WriteHeader(500)
