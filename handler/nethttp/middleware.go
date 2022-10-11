@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 
 	httpwasm "github.com/http-wasm/http-wasm-host-go"
 	"github.com/http-wasm/http-wasm-host-go/api/handler"
@@ -73,16 +74,31 @@ func (h host) EnableFeatures(ctx context.Context, features handler.Features) (re
 	}
 }
 
-// GetPath implements the same method as documented on handler.Host.
-func (h host) GetPath(ctx context.Context) string {
+// GetURI implements the same method as documented on handler.Host.
+func (h host) GetURI(ctx context.Context) string {
 	r := requestStateFromContext(ctx).r
-	return r.URL.Path
+	u := r.URL
+	result := u.EscapedPath()
+	if result == "" {
+		result = "/"
+	}
+	if u.ForceQuery || u.RawQuery != "" {
+		result += "?" + u.RawQuery
+	}
+	return result
 }
 
-// SetPath implements the same method as documented on handler.Host.
-func (h host) SetPath(ctx context.Context, path string) {
+// SetURI implements the same method as documented on handler.Host.
+func (h host) SetURI(ctx context.Context, uri string) {
 	r := requestStateFromContext(ctx).r
-	r.URL.Path = path
+	u, err := url.ParseRequestURI(uri)
+	if err != nil {
+		panic(err)
+	}
+	r.URL.RawPath = u.RawPath
+	r.URL.Path = u.Path
+	r.URL.ForceQuery = u.ForceQuery
+	r.URL.RawQuery = u.RawQuery
 }
 
 // GetRequestHeader implements the same method as documented on handler.Host.

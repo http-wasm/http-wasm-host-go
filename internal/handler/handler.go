@@ -175,22 +175,22 @@ func (r *Runtime) log(ctx context.Context, mod wazeroapi.Module,
 	r.logFn(ctx, m)
 }
 
-// getPath implements the WebAssembly host function handler.FuncGetPath.
-func (r *Runtime) getPath(ctx context.Context, mod wazeroapi.Module,
-	buf, bufLimit uint32) (pathLen uint32) {
-	path := r.host.GetPath(ctx)
+// getURI implements the WebAssembly host function handler.FuncGetURI.
+func (r *Runtime) getURI(ctx context.Context, mod wazeroapi.Module,
+	buf, bufLimit uint32) (uriLen uint32) {
+	path := r.host.GetURI(ctx)
 	return writeStringIfUnderLimit(ctx, mod, buf, bufLimit, path)
 }
 
 // getRequestHeader implements the WebAssembly host function
-// handler.FuncSetPath.
-func (r *Runtime) setPath(ctx context.Context, mod wazeroapi.Module,
-	path, pathLen uint32) {
+// handler.FuncSetURI.
+func (r *Runtime) setURI(ctx context.Context, mod wazeroapi.Module,
+	uri, uriLen uint32) {
 	var p string
-	if pathLen > 0 {
-		p = mustReadString(ctx, mod.Memory(), "path", path, pathLen)
+	if uriLen > 0 {
+		p = mustReadString(ctx, mod.Memory(), "uri", uri, uriLen)
 	}
-	r.host.SetPath(ctx, p)
+	r.host.SetURI(ctx, p)
 }
 
 // getRequestHeader implements the WebAssembly host function
@@ -256,10 +256,10 @@ func (r *Runtime) compileHost(ctx context.Context) (wazero.CompiledModule, error
 			handler.FuncGetConfig, "buf", "buf_limit").
 		ExportFunction(handler.FuncLog, r.log,
 			handler.FuncLog, "message", "message_len").
-		ExportFunction(handler.FuncGetPath, r.getPath,
-			handler.FuncGetPath, "buf", "buf_limit").
-		ExportFunction(handler.FuncSetPath, r.setPath,
-			handler.FuncSetPath, "path", "path_len").
+		ExportFunction(handler.FuncGetURI, r.getURI,
+			handler.FuncGetURI, "buf", "buf_limit").
+		ExportFunction(handler.FuncSetURI, r.setURI,
+			handler.FuncSetURI, "uri", "uri_len").
 		ExportFunction(handler.FuncGetRequestHeader, r.getRequestHeader,
 			handler.FuncGetRequestHeader, "name", "name_len", "buf", "buf_limit").
 		ExportFunction(handler.FuncSetResponseHeader, r.setResponseHeader,

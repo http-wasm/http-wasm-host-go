@@ -2,15 +2,15 @@
 ;; how a handler works and that it is decoupled from other ABI such as WASI.
 ;; Most users will prefer a higher-level language such as C, Rust or TinyGo.
 (module $router
-  ;; get_path writes the request path value to memory, if it isn't larger than
-  ;; the buffer size limit. The result is the actual path length in bytes.
-  (import "http-handler" "get_path" (func $get_path
+  ;; get_uri writes the request URI value to memory, if it isn't larger than
+  ;; the buffer size limit. The result is the actual URI length in bytes.
+  (import "http-handler" "get_uri" (func $get_uri
     (param $buf i32) (param $buf_limit i32)
-    (result (; path_len ;) i32)))
+    (result (; uri_len ;) i32)))
 
-  ;; set_path overwrites the request path with one read from memory.
-  (import "http-handler" "set_path" (func $set_path
-    (param $path i32) (param $path_len i32)))
+  ;; set_uri overwrites the request URI with one read from memory.
+  (import "http-handler" "set_uri" (func $set_uri
+    (param $uri i32) (param $uri_len i32)))
 
   ;; next dispatches control to the next handler on the host.
   (import "http-handler" "next" (func $next))
@@ -30,13 +30,13 @@
   ;; functions like "log" can read memory.
   (memory (export "memory") 1 (; 1 page==64KB ;))
 
-  ;; path is an arbitrary area to write data.
-  (global $path       i32 (i32.const 1024))
-  (global $path_limit i32 (i32.const  256))
+  ;; uri is an arbitrary area to write data.
+  (global $uri       i32 (i32.const 1024))
+  (global $uri_limit i32 (i32.const  256))
 
-  (global $host_prefix i32 (i32.const 0))
+  (global $path_prefix i32 (i32.const 0))
   (data (i32.const 0) "/host")
-  (global $host_prefix_len i32 (i32.const 5))
+  (global $path_prefix_len i32 (i32.const 5))
 
   (global $content_type_name i32 (i32.const 32))
   (data (i32.const 32) "Content-Type")
@@ -53,34 +53,34 @@
   ;; handle implements a simple HTTP router.
   (func $handle (export "handle")
 
-    (local $path_len i32)
+    (local $uri_len i32)
 
-    ;; First, read the path into memory if not larger than our limit.
+    ;; First, read the uri into memory if not larger than our limit.
 
-    ;; path_len = get_path(path, path_limit)
-    (local.set $path_len
-      (call $get_path (global.get $path) (global.get $path_limit)))
+    ;; uri_len = get_uri(uri, uri_limit)
+    (local.set $uri_len
+      (call $get_uri (global.get $uri) (global.get $uri_limit)))
 
-    ;; if path_len > path_limit { next() }
-    (if (i32.gt_s (local.get $path_len) (global.get $path_limit))
+    ;; if uri_len > uri_limit { next() }
+    (if (i32.gt_s (local.get $uri_len) (global.get $uri_limit))
       (then
         (call $next)
-        (return))) ;; dispatch if the path is too long.
+        (return))) ;; dispatch if the uri is too long.
 
     ;; Next, strip any paths starting with '/host' and dispatch.
 
-    ;; if host_prefix_len <= path_len
-    (if (i32.eqz (i32.gt_s (global.get $host_prefix_len) (local.get $path_len)))
+    ;; if path_prefix_len <= uri_len
+    (if (i32.eqz (i32.gt_s (global.get $path_prefix_len) (local.get $uri_len)))
       (then
 
-        (if (call $memeq ;; path[0:host_prefix_len] == host_prefix
-              (global.get $path)
-              (global.get $host_prefix)
-              (global.get $host_prefix_len))
+        (if (call $memeq ;; uri[0:path_prefix_len] == path_prefix
+              (global.get $uri)
+              (global.get $path_prefix)
+              (global.get $path_prefix_len))
           (then
-            (call $set_path ;; path = path[host_prefix_len:]
-              (i32.add (global.get $path)     (global.get $host_prefix_len))
-              (i32.sub (local.get  $path_len) (global.get $host_prefix_len)))
+            (call $set_uri ;; uri = uri[path_prefix_len:]
+              (i32.add (global.get $uri)     (global.get $path_prefix_len))
+              (i32.sub (local.get  $uri_len) (global.get $path_prefix_len)))
             (call $next)
             (return))))) ;; dispatch with the stripped path.
 
