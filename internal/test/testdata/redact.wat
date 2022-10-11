@@ -19,7 +19,7 @@
 
   ;; get_response_body writes the body written by $next to memory if it exists
   ;; and isn't larger than $buf_limit. The result is the length of the body in
-  ;; bytes. This requires $feature_capture_response.
+  ;; bytes. This requires $feature_buffer_response.
   (import "http-handler" "get_response_body" (func $get_response_body
     (param $body i32) (param $body_limit i32)
     (result (; body_len ;) i32)))
@@ -33,8 +33,8 @@
   ;; functions like $get_response_body can read memory.
   (memory (export "memory") 1 (; 1 page==64KB ;))
 
-  ;; feature_capture_response is the feature flag for capturing a response.
-  (global $feature_capture_response i64 (i64.const 1))
+  ;; feature_buffer_response is the feature flag for buffering the response.
+  (global $feature_buffer_response i64 (i64.const 2))
 
   ;; body is the memory offset past any initialization data.
   (global $body i32 (i32.const 1024))
@@ -61,22 +61,22 @@
     (if (i32.eqz (global.get $secret_len))
       (then unreachable)))
 
-  ;; must_enable_capture_response ensures we can read the response from $next.
-  (func $must_enable_capture_response
-    ;; enabled_features := enable_features(feature_capture_response)
+  ;; must_enable_buffer_response ensures we can read the response from $next.
+  (func $must_enable_buffer_response
+    ;; enabled_features := enable_features(feature_buffer_response)
     (local $enabled_features i64)
     (local.set $enabled_features
-      (call $enable_features (global.get $feature_capture_response)))
+      (call $enable_features (global.get $feature_buffer_response)))
 
-    ;; if enabled_features&feature_capture_response == 0 { panic }
+    ;; if enabled_features&feature_buffer_response == 0 { panic }
     (if (i64.eqz (i64.and
-          (global.get $feature_capture_response)
+          (global.get $feature_buffer_response)
           (local.get $enabled_features)))
       (then unreachable)))
 
   (start $main)
   (func $main
-    (call $must_enable_capture_response)
+    (call $must_enable_buffer_response)
     (call $must_read_secret))
 
   ;; must_get_response_body fails if $get_response_body runs out of memory.
@@ -103,7 +103,7 @@
   (func $handle (export "handle")
     (local $body_len i32)
 
-    (call $next) ;; dispatch with $feature_capture_response enabled.
+    (call $next) ;; dispatch with $feature_buffer_response enabled.
 
     ;; load the response body from the downstream handler into memory.
     (local.set $body_len
