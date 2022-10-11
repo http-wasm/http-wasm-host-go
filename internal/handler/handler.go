@@ -175,6 +175,14 @@ func (r *Runtime) log(ctx context.Context, mod wazeroapi.Module,
 	r.logFn(ctx, m)
 }
 
+// getProtocolVersion implements the WebAssembly host function
+// handler.FuncGetProtocolVersion.
+func (r *Runtime) getProtocolVersion(ctx context.Context, mod wazeroapi.Module,
+	buf, bufLimit uint32) (protocolVersionLen uint32) {
+	path := r.host.GetProtocolVersion(ctx)
+	return writeStringIfUnderLimit(ctx, mod, buf, bufLimit, path)
+}
+
 // getURI implements the WebAssembly host function handler.FuncGetURI.
 func (r *Runtime) getURI(ctx context.Context, mod wazeroapi.Module,
 	buf, bufLimit uint32) (uriLen uint32) {
@@ -277,6 +285,8 @@ func (r *Runtime) compileHost(ctx context.Context) (wazero.CompiledModule, error
 			handler.FuncGetConfig, "buf", "buf_limit").
 		ExportFunction(handler.FuncLog, r.log,
 			handler.FuncLog, "message", "message_len").
+		ExportFunction(handler.FuncGetProtocolVersion, r.getProtocolVersion,
+			handler.FuncGetProtocolVersion, "buf", "buf_limit").
 		ExportFunction(handler.FuncGetURI, r.getURI,
 			handler.FuncGetURI, "buf", "buf_limit").
 		ExportFunction(handler.FuncSetURI, r.setURI,

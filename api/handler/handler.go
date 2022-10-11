@@ -27,6 +27,10 @@ type Host interface {
 	// EnableFeatures implements the WebAssembly function export EnableFeatures.
 	EnableFeatures(ctx context.Context, features Features) Features
 
+	// GetProtocolVersion implements the WebAssembly function export
+	// FuncGetProtocolVersion.
+	GetProtocolVersion(ctx context.Context) string
+
 	// GetURI implements the WebAssembly function export FuncGetURI.
 	GetURI(ctx context.Context) string
 
