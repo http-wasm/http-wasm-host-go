@@ -1,4 +1,4 @@
-package wasm
+package wasm_test
 
 import (
 	"context"
@@ -8,12 +8,15 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 
 	httpwasm "github.com/http-wasm/http-wasm-host-go"
+	wasm "github.com/http-wasm/http-wasm-host-go/handler/nethttp"
 	"github.com/http-wasm/http-wasm-host-go/internal/test"
 )
 
 var (
+	requestBody  = "{\"hello\": \"panda\"}"
 	responseBody = "{\"hello\": \"world\"}"
 
 	serveJson = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -32,7 +35,7 @@ func Example_auth() {
 
 	// Configure and compile the WebAssembly guest binary. In this case, it is
 	// an auth interceptor.
-	mw, err := NewMiddleware(ctx, test.AuthWasm)
+	mw, err := wasm.NewMiddleware(ctx, test.AuthWasm)
 	if err != nil {
 		log.Panicln(err)
 	}
@@ -92,14 +95,25 @@ func Example_log() {
 
 	// Configure and compile the WebAssembly guest binary. In this case, it is
 	// a logging interceptor.
-	mw, err := NewMiddleware(ctx, test.LogWasm, httpwasm.Logger(logger))
+	mw, err := wasm.NewMiddleware(ctx, test.LogWasm, httpwasm.Logger(logger))
 	if err != nil {
 		log.Panicln(err)
 	}
 	defer mw.Close(ctx)
 
 	// Create the real request handler.
-	next := serveJson
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// ensure the request body is readable
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			log.Panicln(err)
+		}
+		if want, have := requestBody, string(body); want != have {
+			log.Panicf("unexpected request body, want: %q, have: %q", want, have)
+		}
+		r.Header.Set("Content-Type", "application/json")
+		w.Write([]byte(responseBody)) // nolint
+	})
 
 	// Wrap this with an interceptor implemented in WebAssembly.
 	wrapped := mw.NewHandler(ctx, next)
@@ -109,20 +123,24 @@ func Example_log() {
 	defer ts.Close()
 
 	// Make a client request and print the contents to the same logger
-	resp, err := ts.Client().Get(ts.URL)
+	resp, err := ts.Client().Post(ts.URL, "application/json", strings.NewReader(requestBody))
 	if err != nil {
 		log.Panicln(err)
 	}
 	defer resp.Body.Close()
 
 	// Ensure the response body was still readable!
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Panicln(err)
+	}
 	if want, have := responseBody, string(body); want != have {
 		log.Panicf("unexpected response body, want: %q, have: %q", want, have)
 	}
 
 	// Output:
 	// request body:
+	// {"hello": "panda"}
 	// response body:
 	// {"hello": "world"}
 }
@@ -132,7 +150,7 @@ func Example_router() {
 
 	// Configure and compile the WebAssembly guest binary. In this case, it is
 	// an example request router.
-	mw, err := NewMiddleware(ctx, test.RouterWasm)
+	mw, err := wasm.NewMiddleware(ctx, test.RouterWasm)
 	if err != nil {
 		log.Panicln(err)
 	}
@@ -175,7 +193,7 @@ func Example_redact() {
 	// Configure and compile the WebAssembly guest binary. In this case, it is
 	// an example response redact.
 	secret := "open sesame"
-	mw, err := NewMiddleware(ctx, test.RedactWasm,
+	mw, err := wasm.NewMiddleware(ctx, test.RedactWasm,
 		httpwasm.GuestConfig([]byte(secret)))
 	if err != nil {
 		log.Panicln(err)
