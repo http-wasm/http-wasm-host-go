@@ -19,7 +19,7 @@ type WazeroOptions struct {
 
 // DefaultRuntime implements WazeroOptions.NewRuntime.
 func DefaultRuntime(ctx context.Context) (wazero.Runtime, error) {
-	return wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfigInterpreter()), nil
+	return wazero.NewRuntime(ctx), nil
 }
 
 // DefaultNamespace implements WazeroOptions.NewNamespace.
