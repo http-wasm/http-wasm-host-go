@@ -153,6 +153,7 @@ func (f *filter) Append(ctx context.Context, headers api.HeaderMap, buf api.IoBu
 		return api.StreamFilterContinue
 	}
 
+	// BUG: mosn doesn't use psuedoheaders.
 	if f.respStatus != 0 {
 		headers.Set(":status", strconv.Itoa(f.respStatus))
 	}
