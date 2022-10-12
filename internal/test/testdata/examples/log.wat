@@ -68,7 +68,7 @@
   ;; required_features := feature_buffer_request|feature_buffer_response
   (global $required_features i64 (i64.const 3))
 
-  ;; enable_buffering ensures we can inspect request and response bodies
+  ;; must_enable_buffering ensures we can inspect request and response bodies
   ;; without interfering with the next handler.
   (func $must_enable_buffering
     (local $enabled_features i64)
