@@ -80,6 +80,9 @@ func Example_auth() {
 		default:
 			log.Panicln("unexpected status code", resp.StatusCode)
 		}
+		if auth, ok := resp.Header["Www-Authenticate"]; ok {
+			fmt.Println("Www-Authenticate: ", auth[0])
+		}
 	}
 
 	// Output:

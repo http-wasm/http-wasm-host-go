@@ -1,8 +1,9 @@
-package httpwasm
+package mosn
 
 import (
 	"context"
-	"log"
+	"fmt"
+	"mosn.io/mosn/pkg/log"
 	"os"
 	"strconv"
 
@@ -30,7 +31,7 @@ func factoryCreator(config map[string]interface{}) (api.StreamFilterChainFactory
 	}
 	ctx := context.Background()
 	rt, err := internalhandler.NewRuntime(ctx, code, host{}, httpwasm.Logger(func(ctx context.Context, s string) {
-		log.Println(s)
+		fmt.Println(s)
 	}))
 	if err != nil {
 		return nil, err
@@ -57,20 +58,26 @@ func (f filterFactory) CreateFilterChain(context context.Context, callbacks api.
 type filter struct {
 	rt *internalhandler.Runtime
 
-	receiverFilterHandler api.StreamReceiverFilterHandler
-	senderFilterHandler   api.StreamSenderFilterHandler
-
 	features handler.Features
 
-	respStatus int
-	respBody   []byte
+	receiverFilterHandler api.StreamReceiverFilterHandler
+
+	reqHeaders api.HeaderMap
+	reqBody    api.IoBuffer
+
+	respStatus  int
+	respHeaders api.HeaderMap
+	respBody    []byte
 
 	nextCalled bool
 	ch         chan error
 }
 
-func (f *filter) OnReceive(ctx context.Context, _ api.HeaderMap, _ api.IoBuffer, _ api.HeaderMap) api.StreamFilterStatus {
+func (f *filter) OnReceive(ctx context.Context, headers api.HeaderMap, body api.IoBuffer, _ api.HeaderMap) api.StreamFilterStatus {
 	ctx = context.WithValue(ctx, filterKey{}, f)
+
+	f.reqHeaders = headers
+	f.reqBody = body
 
 	go func() {
 		f.ch <- f.rt.Handle(ctx)
@@ -78,15 +85,20 @@ func (f *filter) OnReceive(ctx context.Context, _ api.HeaderMap, _ api.IoBuffer,
 
 	err := <-f.ch
 	if err != nil {
-		// TODO(anuraaga): Log error in a mosn way properly
-		panic(err)
+		log.Proxy.Errorf(ctx, "wasm error: %v", err)
 	}
 
 	if f.nextCalled {
 		return api.StreamFilterContinue
 	}
 
-	f.receiverFilterHandler.SendHijackReplyWithBody(f.respStatus, nil, string(f.respBody))
+	// TODO(anuraaga): All mosn filter examples pass the request headers when sending a hijack reply. Trying to send
+	// f.respHeaders causes the hijack to be ignored. Figure out why.
+	if respBody := f.respBody; len(respBody) > 0 {
+		f.receiverFilterHandler.SendHijackReplyWithBody(f.respStatus, headers, string(respBody))
+	} else {
+		f.receiverFilterHandler.SendHijackReply(f.respStatus, headers)
+	}
 	return api.StreamFilterStop
 }
 
@@ -98,34 +110,53 @@ func (f *filter) OnDestroy() {
 }
 
 func (f *filter) Append(ctx context.Context, headers api.HeaderMap, buf api.IoBuffer, trailers api.HeaderMap) api.StreamFilterStatus {
-	ctx = context.WithValue(ctx, filterKey{}, f)
-
 	if !f.nextCalled {
-		// Response already sent from receiver.
+		// TODO(anuraaga): All mosn filter examples pass the request headers when sending a hijack reply. We replace
+		// with response headers here until fixing that.
+		// There is no headers.Clear() for some reason.
+		headers.Range(func(key, value string) bool {
+			headers.Del(key)
+			return true
+		})
+		if f.respHeaders != nil {
+			f.respHeaders.Range(func(key, value string) bool {
+				headers.Set(key, value)
+				return true
+			})
+		}
 		return api.StreamFilterStop
 	}
+
+	ctx = context.WithValue(ctx, filterKey{}, f)
+
+	if f.respHeaders != nil {
+		f.respHeaders.Range(func(key, value string) bool {
+			headers.Set(key, value)
+			return true
+		})
+	}
+	f.respHeaders = headers
+	f.respBody = buf.Bytes()
 
 	f.ch <- nil
 	err := <-f.ch
 	if err != nil {
-		// TODO(anuraaga): Log error in a mosn way properly
-		panic(err)
+		log.Proxy.Errorf(ctx, "wasm error: %v", err)
+		return api.StreamFilterContinue
 	}
 
 	if f.respStatus != 0 {
 		headers.Set(":status", strconv.Itoa(f.respStatus))
 	}
 
-	if f.respBody != nil {
-		buf.Reset()
-		_ = buf.Append(f.respBody)
-	}
+	// TODO(anuraaga): Optimize
+	buf.Reset()
+	_ = buf.Append(f.respBody)
 
 	return api.StreamFilterContinue
 }
 
 func (f *filter) SetSenderFilterHandler(handler api.StreamSenderFilterHandler) {
-	f.senderFilterHandler = handler
 }
 
 type filterKey struct{}
