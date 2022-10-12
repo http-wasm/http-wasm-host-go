@@ -55,7 +55,7 @@
 
   (global $authenticate_value i32 (i32.const 196))
   (data (i32.const 196) "Basic realm=\"test\"")
-  (global $authenticate_value_len i32 (i32.const 35))
+  (global $authenticate_value_len i32 (i32.const 18))
 
   ;; set_authenticate adds the WWW-Authenticate header
   (func $set_authenticate
