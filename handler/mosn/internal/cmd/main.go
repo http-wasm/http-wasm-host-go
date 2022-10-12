@@ -15,6 +15,9 @@
  * limitations under the License.
  */
 
+// Copied from https://github.com/mosn/mosn/blob/9bd8b14b54fd979ebcb077f13e7a18e2bcfc43cd/cmd/mosn/main/main.go
+// with extensions we don't need removed to improve compile time.
+
 package main
 
 import (
@@ -26,53 +29,20 @@ import (
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	_ "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
 	"github.com/urfave/cli"
-	_ "mosn.io/mosn/istio/istio1106"
-	_ "mosn.io/mosn/istio/istio1106/filter/stream/jwtauthn"
-	_ "mosn.io/mosn/istio/istio1106/filter/stream/mixer"
-	_ "mosn.io/mosn/istio/istio1106/filter/stream/stats"
-	_ "mosn.io/mosn/istio/istio1106/sds"
-	_ "mosn.io/mosn/istio/istio1106/xds"
 	_ "mosn.io/mosn/pkg/admin/debug"
 	_ "mosn.io/mosn/pkg/filter/listener/originaldst"
 	_ "mosn.io/mosn/pkg/filter/network/connectionmanager"
-	_ "mosn.io/mosn/pkg/filter/network/grpc"
 	_ "mosn.io/mosn/pkg/filter/network/proxy"
 	_ "mosn.io/mosn/pkg/filter/network/streamproxy"
 	_ "mosn.io/mosn/pkg/filter/network/tunnel"
-	_ "mosn.io/mosn/pkg/filter/stream/dsl"
-	_ "mosn.io/mosn/pkg/filter/stream/dubbo"
-	_ "mosn.io/mosn/pkg/filter/stream/faultinject"
-	_ "mosn.io/mosn/pkg/filter/stream/faulttolerance"
-	_ "mosn.io/mosn/pkg/filter/stream/flowcontrol"
-	_ "mosn.io/mosn/pkg/filter/stream/grpcmetric"
-	_ "mosn.io/mosn/pkg/filter/stream/gzip"
-	_ "mosn.io/mosn/pkg/filter/stream/headertometadata"
-	_ "mosn.io/mosn/pkg/filter/stream/ipaccess"
-	_ "mosn.io/mosn/pkg/filter/stream/mirror"
-	_ "mosn.io/mosn/pkg/filter/stream/payloadlimit"
-	_ "mosn.io/mosn/pkg/filter/stream/proxywasm"
-	_ "mosn.io/mosn/pkg/filter/stream/seata"
-	_ "mosn.io/mosn/pkg/filter/stream/transcoder/http2bolt"
 	_ "mosn.io/mosn/pkg/filter/stream/transcoder/httpconv"
-	_ "mosn.io/mosn/pkg/metrics/sink"
-	_ "mosn.io/mosn/pkg/metrics/sink/prometheus"
 	_ "mosn.io/mosn/pkg/network"
 	_ "mosn.io/mosn/pkg/protocol"
-	_ "mosn.io/mosn/pkg/protocol/xprotocol"
 	_ "mosn.io/mosn/pkg/router"
 	_ "mosn.io/mosn/pkg/server/keeper"
 	_ "mosn.io/mosn/pkg/stream/http"
 	_ "mosn.io/mosn/pkg/stream/http2"
-	_ "mosn.io/mosn/pkg/stream/xprotocol"
-	_ "mosn.io/mosn/pkg/trace/jaeger"
-	_ "mosn.io/mosn/pkg/trace/skywalking"
-	_ "mosn.io/mosn/pkg/trace/skywalking/http"
-	_ "mosn.io/mosn/pkg/trace/sofa/http"
-	_ "mosn.io/mosn/pkg/trace/sofa/xprotocol"
-	_ "mosn.io/mosn/pkg/trace/sofa/xprotocol/bolt"
 	_ "mosn.io/mosn/pkg/upstream/healthcheck"
-	_ "mosn.io/mosn/pkg/upstream/servicediscovery/dubbod"
-	_ "mosn.io/mosn/pkg/wasm/runtime/wasmer"
 	_ "mosn.io/pkg/buffer"
 
 	_ "github.com/http-wasm/http-wasm-host-go/handler/mosn"

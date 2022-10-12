@@ -2,12 +2,13 @@ package mosn
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"mosn.io/mosn/pkg/log"
 	"os"
 	"strconv"
 
 	"mosn.io/api"
+	"mosn.io/mosn/pkg/log"
 
 	httpwasm "github.com/http-wasm/http-wasm-host-go"
 	"github.com/http-wasm/http-wasm-host-go/api/handler"
@@ -23,16 +24,24 @@ var _ api.StreamFilterChainFactory = (*filterFactory)(nil)
 var _ api.StreamSenderFilter = (*filter)(nil)
 var _ api.StreamReceiverFilter = (*filter)(nil)
 
+var errNoPath = errors.New("path is not set or is not a string")
+
 func factoryCreator(config map[string]interface{}) (api.StreamFilterChainFactory, error) {
-	p := config["path"].(string)
+	p, ok := config["path"].(string)
+	if !ok {
+		return nil, errNoPath
+	}
+	conf, _ := config["config"].(string)
 	code, err := os.ReadFile(p)
 	if err != nil {
 		return nil, err
 	}
 	ctx := context.Background()
-	rt, err := internalhandler.NewRuntime(ctx, code, host{}, httpwasm.Logger(func(ctx context.Context, s string) {
-		fmt.Println(s)
-	}))
+	rt, err := internalhandler.NewRuntime(ctx, code, host{},
+		httpwasm.GuestConfig([]byte(conf)),
+		httpwasm.Logger(func(ctx context.Context, s string) {
+			fmt.Println(s)
+		}))
 	if err != nil {
 		return nil, err
 	}

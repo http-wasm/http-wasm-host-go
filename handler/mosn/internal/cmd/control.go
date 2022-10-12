@@ -15,6 +15,9 @@
  * limitations under the License.
  */
 
+// Copied from https://github.com/mosn/mosn/blob/9bd8b14b54fd979ebcb077f13e7a18e2bcfc43cd/cmd/mosn/main/control.go
+// with extensions we don't need removed to improve compile time.
+
 package main
 
 import (
@@ -23,12 +26,9 @@ import (
 	"runtime"
 	"time"
 
-	admin "mosn.io/mosn/pkg/admin/server"
-
 	"github.com/urfave/cli"
-
-	"mosn.io/api"
 	"mosn.io/mosn/istio/istio1106"
+	admin "mosn.io/mosn/pkg/admin/server"
 	v2 "mosn.io/mosn/pkg/config/v2"
 	"mosn.io/mosn/pkg/configmanager"
 	"mosn.io/mosn/pkg/featuregate"
@@ -36,21 +36,8 @@ import (
 	"mosn.io/mosn/pkg/log"
 	"mosn.io/mosn/pkg/metrics"
 	"mosn.io/mosn/pkg/mosn"
-	"mosn.io/mosn/pkg/protocol"
-	"mosn.io/mosn/pkg/protocol/xprotocol"
-	"mosn.io/mosn/pkg/protocol/xprotocol/bolt"
-	"mosn.io/mosn/pkg/protocol/xprotocol/boltv2"
-	"mosn.io/mosn/pkg/protocol/xprotocol/dubbo"
-	"mosn.io/mosn/pkg/protocol/xprotocol/dubbothrift"
-	"mosn.io/mosn/pkg/protocol/xprotocol/tars"
 	"mosn.io/mosn/pkg/server"
 	"mosn.io/mosn/pkg/stagemanager"
-	xstream "mosn.io/mosn/pkg/stream/xprotocol"
-	"mosn.io/mosn/pkg/trace"
-	tracehttp "mosn.io/mosn/pkg/trace/sofa/http"
-	xtrace "mosn.io/mosn/pkg/trace/sofa/xprotocol"
-	tracebolt "mosn.io/mosn/pkg/trace/sofa/xprotocol/bolt"
-	"mosn.io/mosn/pkg/trace/zipkin"
 	"mosn.io/pkg/buffer"
 )
 
@@ -262,26 +249,6 @@ func DefaultParamsParsed(c *cli.Context) {
 
 // Call the extensions that are needed here, instead of in extensions init() function
 func ExtensionsRegister(c *cli.Context) {
-	// tracer driver register
-	trace.RegisterDriver("SOFATracer", trace.NewDefaultDriverImpl())
-	trace.RegisterDriver(zipkin.DriverName, zipkin.NewZipkinDriverImpl())
-	// xprotocol action register
-	xprotocol.RegisterXProtocolAction(xstream.NewConnPool, xstream.NewStreamFactory, func(codec api.XProtocolCodec) {
-		name := codec.ProtocolName()
-		trace.RegisterTracerBuilder("SOFATracer", name, xtrace.NewTracer)
-	})
-	// xprotocol register
-	_ = xprotocol.RegisterXProtocolCodec(&bolt.XCodec{})
-	_ = xprotocol.RegisterXProtocolCodec(&boltv2.XCodec{})
-	_ = xprotocol.RegisterXProtocolCodec(&dubbo.XCodec{})
-	_ = xprotocol.RegisterXProtocolCodec(&dubbothrift.XCodec{})
-	_ = xprotocol.RegisterXProtocolCodec(&tars.XCodec{})
-	// trace register
-	xtrace.RegisterDelegate(bolt.ProtocolName, tracebolt.Boltv1Delegate)
-	xtrace.RegisterDelegate(boltv2.ProtocolName, tracebolt.Boltv2Delegate)
-	trace.RegisterTracerBuilder("SOFATracer", protocol.HTTP1, tracehttp.NewTracer)
-	trace.RegisterTracerBuilder(zipkin.DriverName, protocol.HTTP1, zipkin.NewHttpTracer)
-
 	// register buffer logger
 	buffer.SetLogFunc(func(msg string) {
 		log.DefaultLogger.Errorf("[iobuffer] iobuffer error log info: %s", msg)

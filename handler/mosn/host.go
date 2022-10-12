@@ -2,8 +2,13 @@ package mosn
 
 import (
 	"context"
-	"mosn.io/pkg/header"
+	"fmt"
+	"net/url"
 	"strconv"
+
+	"mosn.io/mosn/pkg/types"
+	"mosn.io/mosn/pkg/variable"
+	"mosn.io/pkg/header"
 
 	"github.com/http-wasm/http-wasm-host-go/api/handler"
 	internalhandler "github.com/http-wasm/http-wasm-host-go/internal/handler"
@@ -37,14 +42,25 @@ func (host) EnableFeatures(ctx context.Context, features handler.Features) handl
 }
 
 func (host) GetURI(ctx context.Context) string {
-	if p, ok := filterFromContext(ctx).reqHeaders.Get(":path"); ok {
+	// TODO(anuraaga): There is also variable.GetProtocolResource(ctx, api.URI), unclear if they must be kept in sync.
+	p, _ := variable.GetString(ctx, types.VarPath)
+	q, qErr := variable.GetString(ctx, types.VarQueryString)
+	if qErr != nil {
+		// No query, so an error is returned.
 		return p
 	}
-	return ""
+	return fmt.Sprintf("%s?%s", p, q)
 }
 
-func (host) SetURI(ctx context.Context, path string) {
-	filterFromContext(ctx).reqHeaders.Set(":path", path)
+func (host) SetURI(ctx context.Context, uri string) {
+	u, err := url.ParseRequestURI(uri)
+	if err != nil {
+		panic(err)
+	}
+	_ = variable.SetString(ctx, types.VarPath, u.Path)
+	if len(u.RawQuery) > 0 || u.ForceQuery {
+		_ = variable.SetString(ctx, types.VarQueryString, u.RawQuery)
+	}
 }
 
 func (host) GetRequestHeader(ctx context.Context, name string) (string, bool) {
