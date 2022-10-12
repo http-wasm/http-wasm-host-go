@@ -90,8 +90,14 @@ func (host) SetResponseHeader(ctx context.Context, name, value string) {
 func (host) Next(ctx context.Context) {
 	f := filterFromContext(ctx)
 	f.nextCalled = true
+
+	// The handling of a request is split into two functions, OnReceive and Append in mosn.
+	// Invoking the next handler means we need to finish OnReceive and come back in Append.
+
+	// Resume exceution of OnReceive which is currently waiting on this channel.
 	f.ch <- nil
 
+	// Wait for Append to resume execution of Next when it signals this channel.
 	<-f.ch
 }
 

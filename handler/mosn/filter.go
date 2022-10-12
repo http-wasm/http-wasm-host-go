@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"runtime"
 	"strconv"
 
 	"mosn.io/api"
@@ -41,6 +42,9 @@ func factoryCreator(config map[string]interface{}) (api.StreamFilterChainFactory
 		httpwasm.Logger(func(ctx context.Context, s string) {
 			log.Proxy.Infof(ctx, "wasm: %s", s)
 		}))
+	runtime.SetFinalizer(rt, func(rt *internalhandler.Runtime) {
+		rt.Close(context.Background())
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -91,6 +95,8 @@ func (f *filter) OnReceive(ctx context.Context, headers api.HeaderMap, body api.
 		f.ch <- f.rt.Handle(ctx)
 	}()
 
+	// Wait for the guest, running in a goroutine, to signal for us to continue. This will either be
+	// within an invocation of next() or when returning from the guest if next() was not called.
 	err := <-f.ch
 	if err != nil {
 		log.Proxy.Errorf(ctx, "wasm error: %v", err)
@@ -146,7 +152,11 @@ func (f *filter) Append(ctx context.Context, headers api.HeaderMap, buf api.IoBu
 	f.respHeaders = headers
 	f.respBody = buf.Bytes()
 
+	// The guest called next, and as we have the upstream response now, we can resume it by
+	// signaling the channel.
 	f.ch <- nil
+
+	// The channel will return when the guest completes.
 	err := <-f.ch
 	if err != nil {
 		log.Proxy.Errorf(ctx, "wasm error: %v", err)
