@@ -27,19 +27,29 @@ type Host interface {
 	// EnableFeatures implements the WebAssembly function export EnableFeatures.
 	EnableFeatures(ctx context.Context, features Features) Features
 
-	// GetProtocolVersion implements the WebAssembly function export
-	// FuncGetProtocolVersion.
-	GetProtocolVersion(ctx context.Context) string
+	// GetMethod implements the WebAssembly function export FuncGetMethod.
+	GetMethod(ctx context.Context) string
+
+	// SetMethod implements the WebAssembly function export FuncSetMethod.
+	SetMethod(ctx context.Context, method string)
 
 	// GetURI implements the WebAssembly function export FuncGetURI.
 	GetURI(ctx context.Context) string
 
 	// SetURI implements the WebAssembly function export FuncSetURI.
-	SetURI(ctx context.Context, path string)
+	SetURI(ctx context.Context, uri string)
+
+	// GetProtocolVersion implements the WebAssembly function export
+	// FuncGetProtocolVersion.
+	GetProtocolVersion(ctx context.Context) string
 
 	// GetRequestHeader implements the WebAssembly function export
 	// FuncGetRequestHeader. This returns false if the value doesn't exist.
 	GetRequestHeader(ctx context.Context, name string) (string, bool)
+
+	// SetRequestHeader implements the WebAssembly function export
+	// FuncSetRequestHeader.
+	SetRequestHeader(ctx context.Context, name, value string)
 
 	// GetRequestBody implements the WebAssembly function export
 	// FuncGetRequestBody.
@@ -60,6 +70,10 @@ type Host interface {
 	// SetStatusCode implements the WebAssembly function export
 	// FuncSetStatusCode.
 	SetStatusCode(ctx context.Context, statusCode uint32)
+
+	// GetResponseHeader implements the WebAssembly function export
+	// FuncGetResponseHeader. This returns false if the value doesn't exist.
+	GetResponseHeader(ctx context.Context, name string) (string, bool)
 
 	// SetResponseHeader implements the WebAssembly function export
 	// FuncSetResponseHeader.

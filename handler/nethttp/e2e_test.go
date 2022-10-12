@@ -74,6 +74,36 @@ func TestConfig(t *testing.T) {
 	}
 }
 
+func TestGetMethod(t *testing.T) {
+	mw, err := wasm.NewMiddleware(testCtx, test.BinTestProtocolVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mw.Close(testCtx)
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if want, have := "POST", r.Method; want != have {
+			log.Panicf("unexpected request method, want: %q, have: %q", want, have)
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want, have := "GET", string(body); want != have {
+			log.Panicf("unexpected request body, want: %q, have: %q", want, have)
+		}
+	})
+
+	ts := httptest.NewServer(mw.NewHandler(testCtx, next))
+	defer ts.Close()
+
+	resp, err := ts.Client().Get(ts.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+}
+
 func TestGetProtocolVersion(t *testing.T) {
 	tests := []struct {
 		http2    bool

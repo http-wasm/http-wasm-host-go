@@ -47,8 +47,19 @@ const (
 	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#handle
 	FuncHandle = "handle"
 
-	// FuncGetURI writes the request URI to memory if it isn't larger than
-	// `buf-limit`. The result is its length in bytes.
+	// FuncGetMethod writes the method to memory if it isn't larger than
+	// `buf-limit`. The result is its length in bytes. Ex. "GET"
+	//
+	// TODO: document on http-wasm-abi
+	FuncGetMethod = "get_method"
+
+	// FuncSetMethod Overwrites the method with one read from memory.
+	//
+	// TODO: document on http-wasm-abi
+	FuncSetMethod = "set_method"
+
+	// FuncGetURI writes the URI to memory if it isn't larger than `buf-limit`.
+	// The result is its length in bytes. Ex. "/v1.0/hi?name=panda"
 	//
 	// Note: The URI may include query parameters.
 	//
@@ -56,7 +67,7 @@ const (
 	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#get-uri
 	FuncGetURI = "get_uri"
 
-	// FuncSetURI Overwrites the request URI with one read from memory.
+	// FuncSetURI Overwrites the URI with one read from memory.
 	//
 	// Note: The URI may include query parameters.
 	//
@@ -64,9 +75,9 @@ const (
 	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#set-uri
 	FuncSetURI = "set_uri"
 
-	// FuncGetProtocolVersion writes the protocol version of the request to memory
-	// if it isn't larger than `buf-limit`. The result is its length in bytes.
-	// Ex. "HTTP/1.1", "HTTP/2", "HTTP/3"
+	// FuncGetProtocolVersion writes the HTTP protocol version to memory if it
+	// isn't larger than `buf-limit`. The result is its length in bytes.
+	// Ex. "HTTP/1.1"
 	//
 	// See https://www.rfc-editor.org/rfc/rfc9110#name-protocol-version
 	// TODO: document on http-wasm-abi
@@ -78,6 +89,12 @@ const (
 	//
 	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#get-request-header
 	FuncGetRequestHeader = "get_request_header"
+
+	// FuncSetRequestHeader overwrites a request header with a given name to
+	// a value read from memory.
+	//
+	// TODO: document on http-wasm-abi
+	FuncSetRequestHeader = "set_request_header"
 
 	// FuncGetRequestBody writes the request body to memory if it exists and
 	// isn't larger than `buf-limit`. The result is its length in bytes.
@@ -114,7 +131,7 @@ const (
 	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#next
 	FuncNext = "next"
 
-	// FuncGetStatusCode gets the status code produced by FuncNext. This
+	// FuncGetStatusCode returns the status code produced by FuncNext. This
 	// requires FeatureBufferResponse.
 	//
 	// To enable FeatureBufferResponse, FuncEnableFeatures prior to FuncNext.

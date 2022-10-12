@@ -168,19 +168,30 @@ func (r *Runtime) getConfig(ctx context.Context, mod wazeroapi.Module,
 // log implements the WebAssembly host function handler.FuncLog.
 func (r *Runtime) log(ctx context.Context, mod wazeroapi.Module,
 	message, messageLen uint32) {
-	if messageLen == 0 {
-		return // nothing to write
+	var m string
+	if messageLen > 0 {
+		m = mustReadString(ctx, mod.Memory(), "message", message, messageLen)
 	}
-	m := mustReadString(ctx, mod.Memory(), "message", message, messageLen)
 	r.logFn(ctx, m)
 }
 
-// getProtocolVersion implements the WebAssembly host function
-// handler.FuncGetProtocolVersion.
-func (r *Runtime) getProtocolVersion(ctx context.Context, mod wazeroapi.Module,
+// getMethod implements the WebAssembly host function handler.FuncGetMethod.
+func (r *Runtime) getMethod(ctx context.Context, mod wazeroapi.Module,
 	buf, bufLimit uint32) (len uint32) {
-	protocolVersion := r.host.GetProtocolVersion(ctx)
-	return writeStringIfUnderLimit(ctx, mod, buf, bufLimit, protocolVersion)
+	method := r.host.GetMethod(ctx)
+	return writeStringIfUnderLimit(ctx, mod, buf, bufLimit, method)
+}
+
+// getRequestHeader implements the WebAssembly host function
+// handler.FuncSetMethod.
+func (r *Runtime) setMethod(ctx context.Context, mod wazeroapi.Module,
+	method, methodLen uint32) {
+	var p string
+	if methodLen == 0 {
+		panic("HTTP method cannot be empty")
+	}
+	p = mustReadString(ctx, mod.Memory(), "method", method, methodLen)
+	r.host.SetMethod(ctx, p)
 }
 
 // getURI implements the WebAssembly host function handler.FuncGetURI.
@@ -195,16 +206,30 @@ func (r *Runtime) getURI(ctx context.Context, mod wazeroapi.Module,
 func (r *Runtime) setURI(ctx context.Context, mod wazeroapi.Module,
 	uri, uriLen uint32) {
 	var p string
-	if uriLen > 0 {
+	if uriLen > 0 { // overwrite with empty is supported
 		p = mustReadString(ctx, mod.Memory(), "uri", uri, uriLen)
 	}
 	r.host.SetURI(ctx, p)
+}
+
+// getProtocolVersion implements the WebAssembly host function
+// handler.FuncGetProtocolVersion.
+func (r *Runtime) getProtocolVersion(ctx context.Context, mod wazeroapi.Module,
+	buf, bufLimit uint32) uint32 {
+	protocolVersion := r.host.GetProtocolVersion(ctx)
+	if len(protocolVersion) == 0 {
+		panic("HTTP protocol version cannot be empty")
+	}
+	return writeStringIfUnderLimit(ctx, mod, buf, bufLimit, protocolVersion)
 }
 
 // getRequestHeader implements the WebAssembly host function
 // handler.FuncGetRequestHeader.
 func (r *Runtime) getRequestHeader(ctx context.Context, mod wazeroapi.Module,
 	name, nameLen, buf, bufLimit uint32) (result uint64) {
+	if nameLen == 0 {
+		panic("HTTP header name cannot be empty")
+	}
 	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
 	v, ok := r.host.GetRequestHeader(ctx, n)
 	if !ok {
@@ -212,6 +237,18 @@ func (r *Runtime) getRequestHeader(ctx context.Context, mod wazeroapi.Module,
 	}
 	result = uint64(1<<32) | uint64(writeStringIfUnderLimit(ctx, mod, buf, bufLimit, v))
 	return
+}
+
+// setRequestHeader implements the WebAssembly host function
+// handler.FuncRequestHeader.
+func (r *Runtime) setRequestHeader(ctx context.Context, mod wazeroapi.Module,
+	name, nameLen, value, valueLen uint32) {
+	if nameLen == 0 {
+		panic("HTTP header name cannot be empty")
+	}
+	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
+	v := mustReadString(ctx, mod.Memory(), "value", value, valueLen)
+	r.host.SetRequestHeader(ctx, n, v)
 }
 
 // getRequestBody implements the WebAssembly host function
@@ -247,10 +284,29 @@ func (r *Runtime) setStatusCode(ctx context.Context, statusCode uint32) {
 	r.host.SetStatusCode(ctx, statusCode)
 }
 
+// getResponseHeader implements the WebAssembly host function
+// handler.FuncGetResponseHeader.
+func (r *Runtime) getResponseHeader(ctx context.Context, mod wazeroapi.Module,
+	name, nameLen, buf, bufLimit uint32) (result uint64) {
+	if nameLen == 0 {
+		panic("HTTP header name cannot be empty")
+	}
+	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
+	v, ok := r.host.GetResponseHeader(ctx, n)
+	if !ok {
+		return // value doesn't exist
+	}
+	result = uint64(1<<32) | uint64(writeStringIfUnderLimit(ctx, mod, buf, bufLimit, v))
+	return
+}
+
 // setResponseHeader implements the WebAssembly host function
 // handler.FuncRequestHeader.
 func (r *Runtime) setResponseHeader(ctx context.Context, mod wazeroapi.Module,
 	name, nameLen, value, valueLen uint32) {
+	if nameLen == 0 {
+		panic("HTTP header name cannot be empty")
+	}
 	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
 	v := mustReadString(ctx, mod.Memory(), "value", value, valueLen)
 	r.host.SetResponseHeader(ctx, n, v)
@@ -285,14 +341,20 @@ func (r *Runtime) compileHost(ctx context.Context) (wazero.CompiledModule, error
 			handler.FuncGetConfig, "buf", "buf_limit").
 		ExportFunction(handler.FuncLog, r.log,
 			handler.FuncLog, "message", "message_len").
-		ExportFunction(handler.FuncGetProtocolVersion, r.getProtocolVersion,
-			handler.FuncGetProtocolVersion, "buf", "buf_limit").
+		ExportFunction(handler.FuncGetMethod, r.getMethod,
+			handler.FuncGetMethod, "buf", "buf_limit").
+		ExportFunction(handler.FuncSetMethod, r.setMethod,
+			handler.FuncSetMethod, "method", "method_len").
 		ExportFunction(handler.FuncGetURI, r.getURI,
 			handler.FuncGetURI, "buf", "buf_limit").
 		ExportFunction(handler.FuncSetURI, r.setURI,
 			handler.FuncSetURI, "uri", "uri_len").
+		ExportFunction(handler.FuncGetProtocolVersion, r.getProtocolVersion,
+			handler.FuncGetProtocolVersion, "buf", "buf_limit").
 		ExportFunction(handler.FuncGetRequestHeader, r.getRequestHeader,
 			handler.FuncGetRequestHeader, "name", "name_len", "buf", "buf_limit").
+		ExportFunction(handler.FuncSetRequestHeader, r.setRequestHeader,
+			handler.FuncSetRequestHeader, "name", "name_len", "value", "value_len").
 		ExportFunction(handler.FuncGetRequestBody, r.getRequestBody,
 			handler.FuncGetRequestBody, "buf", "buf_limit").
 		ExportFunction(handler.FuncSetRequestBody, r.setRequestBody,
@@ -303,6 +365,8 @@ func (r *Runtime) compileHost(ctx context.Context) (wazero.CompiledModule, error
 			handler.FuncGetStatusCode).
 		ExportFunction(handler.FuncSetStatusCode, r.setStatusCode,
 			handler.FuncSetStatusCode, "status_code").
+		ExportFunction(handler.FuncGetResponseHeader, r.getResponseHeader,
+			handler.FuncGetResponseHeader, "name", "name_len", "buf", "buf_limit").
 		ExportFunction(handler.FuncSetResponseHeader, r.setResponseHeader,
 			handler.FuncSetResponseHeader, "name", "name_len", "value", "value_len").
 		ExportFunction(handler.FuncGetResponseBody, r.getResponseBody,
