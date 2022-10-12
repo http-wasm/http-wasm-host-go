@@ -14,6 +14,7 @@ build.wat: $(wat_sources)
 .PHONY: test
 test:
 	@go test -v ./...
+	@cd handler/mosn && go test -v ./...
 
 golangci_lint_path := $(shell go env GOPATH)/bin/golangci-lint
 
