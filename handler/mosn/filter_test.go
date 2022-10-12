@@ -71,7 +71,7 @@ func TestAuth(t *testing.T) {
 
 	backend := httptest.NewServer(serveJson)
 	defer backend.Close()
-	mosn := startMosn(t, backend.Listener.Addr().String(), "auth.wasm")
+	mosn := startMosn(t, backend.Listener.Addr().String(), filepath.Join("examples", "auth.wasm"))
 	defer mosn.cmd.Process.Kill()
 
 	for _, tc := range tests {
@@ -106,7 +106,7 @@ func TestAuth(t *testing.T) {
 func TestLog(t *testing.T) {
 	backend := httptest.NewServer(serveJson)
 	defer backend.Close()
-	mosn := startMosn(t, backend.Listener.Addr().String(), "log.wasm")
+	mosn := startMosn(t, backend.Listener.Addr().String(), filepath.Join("examples", "log.wasm"))
 	defer mosn.cmd.Process.Kill()
 
 	// Make a client request and print the contents to the same logger
@@ -138,6 +138,42 @@ response body:
 	}
 }
 
+func TestProtocolVersion(t *testing.T) {
+	tests := []struct {
+		http2    bool
+		respBody string
+	}{
+		{
+			http2:    false,
+			respBody: "HTTP/1.1",
+		},
+		// TODO(anuraaga): Enable http/2
+	}
+
+	backend := httptest.NewServer(serveJson)
+	defer backend.Close()
+	mosn := startMosn(t, backend.Listener.Addr().String(), filepath.Join("tests", "protocol_version.wasm"))
+	defer mosn.cmd.Process.Kill()
+
+	for _, tc := range tests {
+		tt := tc
+		t.Run(tt.respBody, func(t *testing.T) {
+			resp, err := http.Get(mosn.url)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want, have := tt.respBody, string(body); want != have {
+				t.Errorf("unexpected response body, want: %q, have: %q", want, have)
+			}
+		})
+	}
+}
+
 func TestRouter(t *testing.T) {
 	tests := []struct {
 		path     string
@@ -163,7 +199,7 @@ func TestRouter(t *testing.T) {
 
 	backend := httptest.NewServer(servePath)
 	defer backend.Close()
-	mosn := startMosn(t, backend.Listener.Addr().String(), "router.wasm")
+	mosn := startMosn(t, backend.Listener.Addr().String(), filepath.Join("examples", "router.wasm"))
 	defer mosn.cmd.Process.Kill()
 
 	for _, tc := range tests {
@@ -211,7 +247,7 @@ func TestRedact(t *testing.T) {
 		w.Write([]byte(body)) // nolint
 	}))
 	defer backend.Close()
-	mosn := startMosn(t, backend.Listener.Addr().String(), "redact.wasm")
+	mosn := startMosn(t, backend.Listener.Addr().String(), filepath.Join("examples", "redact.wasm"))
 	defer mosn.cmd.Process.Kill()
 
 	for _, tc := range tests {
@@ -259,7 +295,7 @@ func startMosn(t *testing.T, backendAddr string, wasm string) mosn {
 		AdminPort int
 	}{
 		Backend:   backendAddr,
-		Wasm:      filepath.Join("..", "..", "internal", "test", "testdata", "examples", wasm),
+		Wasm:      filepath.Join("..", "..", "internal", "test", "testdata", wasm),
 		Port:      port,
 		AdminPort: adminPort,
 	})

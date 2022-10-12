@@ -21,6 +21,12 @@ type host struct {
 
 func (h host) GetProtocolVersion(ctx context.Context) string {
 	p, _ := variable.GetString(ctx, types.VarProtocol)
+	switch p {
+	case "Http1":
+		return "HTTP/1.1"
+	case "Http2":
+		return "HTTP/2.0"
+	}
 	return p
 }
 
