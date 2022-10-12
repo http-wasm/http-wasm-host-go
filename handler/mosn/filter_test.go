@@ -126,15 +126,17 @@ func TestLog(t *testing.T) {
 	}
 
 	out := mosn.stdout.String()
-	want := `
-request body:
-{"hello": "panda"}
-response body:
-{"hello": "world"}
-`
+	want := []string{"wasm: request body:", `wasm: {"hello": "panda"}`, "wasm: response body:", `wasm: {"hello": "world"}`}
 
-	if !strings.Contains(out, strings.TrimSpace(want)) {
-		t.Errorf("got %s, want %s", out, want)
+	var missing []string
+	for _, w := range want {
+		if !strings.Contains(out, w) {
+			missing = append(missing, w)
+		}
+	}
+
+	if len(missing) > 0 {
+		t.Errorf("got %s, missing: %s", out, missing)
 	}
 }
 

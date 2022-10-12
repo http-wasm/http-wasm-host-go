@@ -3,7 +3,6 @@ package mosn
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"strconv"
 
@@ -40,7 +39,7 @@ func factoryCreator(config map[string]interface{}) (api.StreamFilterChainFactory
 	rt, err := internalhandler.NewRuntime(ctx, code, host{},
 		httpwasm.GuestConfig([]byte(conf)),
 		httpwasm.Logger(func(ctx context.Context, s string) {
-			fmt.Println(s)
+			log.Proxy.Infof(ctx, "wasm: %s", s)
 		}))
 	if err != nil {
 		return nil, err
