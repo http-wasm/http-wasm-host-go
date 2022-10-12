@@ -35,7 +35,7 @@ func Example_auth() {
 
 	// Configure and compile the WebAssembly guest binary. In this case, it is
 	// an auth interceptor.
-	mw, err := wasm.NewMiddleware(ctx, test.AuthWasm)
+	mw, err := wasm.NewMiddleware(ctx, test.BinExampleAuth)
 	if err != nil {
 		log.Panicln(err)
 	}
@@ -81,13 +81,15 @@ func Example_auth() {
 			log.Panicln("unexpected status code", resp.StatusCode)
 		}
 		if auth, ok := resp.Header["Www-Authenticate"]; ok {
-			fmt.Println("Www-Authenticate: ", auth[0])
+			fmt.Println("Www-Authenticate:", auth[0])
 		}
 	}
 
 	// Output:
 	// Unauthorized
+	// Www-Authenticate: Basic realm="test"
 	// Unauthorized
+	// Www-Authenticate: Basic realm="test"
 	// OK
 	// Unauthorized
 }
@@ -98,7 +100,7 @@ func Example_log() {
 
 	// Configure and compile the WebAssembly guest binary. In this case, it is
 	// a logging interceptor.
-	mw, err := wasm.NewMiddleware(ctx, test.LogWasm, httpwasm.Logger(logger))
+	mw, err := wasm.NewMiddleware(ctx, test.BinExampleLog, httpwasm.Logger(logger))
 	if err != nil {
 		log.Panicln(err)
 	}
@@ -153,7 +155,7 @@ func Example_router() {
 
 	// Configure and compile the WebAssembly guest binary. In this case, it is
 	// an example request router.
-	mw, err := wasm.NewMiddleware(ctx, test.RouterWasm)
+	mw, err := wasm.NewMiddleware(ctx, test.BinExampleRouter)
 	if err != nil {
 		log.Panicln(err)
 	}
@@ -196,7 +198,7 @@ func Example_redact() {
 	// Configure and compile the WebAssembly guest binary. In this case, it is
 	// an example response redact.
 	secret := "open sesame"
-	mw, err := wasm.NewMiddleware(ctx, test.RedactWasm,
+	mw, err := wasm.NewMiddleware(ctx, test.BinExampleRedact,
 		httpwasm.GuestConfig([]byte(secret)))
 	if err != nil {
 		log.Panicln(err)

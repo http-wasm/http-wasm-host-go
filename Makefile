@@ -5,7 +5,7 @@ golangci_lint := github.com/golangci/golangci-lint/cmd/golangci-lint@v1.49.0
 build.testdata:
 	@$(MAKE) build.wat
 
-wat_sources := $(wildcard internal/test/testdata/*.wat)
+wat_sources := $(wildcard internal/test/testdata/*/*.wat)
 build.wat: $(wat_sources)
 	@for f in $^; do \
 	    wat2wasm -o $$(echo $$f | sed -e 's/\.wat/\.wasm/') --debug-names $$f; \

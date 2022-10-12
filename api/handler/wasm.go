@@ -47,21 +47,30 @@ const (
 	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#handle
 	FuncHandle = "handle"
 
-	// FuncGetURI writes the path to memory if it isn't larger than
+	// FuncGetURI writes the request URI to memory if it isn't larger than
 	// `buf-limit`. The result is its length in bytes.
 	//
-	// Note: The path does not include query parameters.
+	// Note: The URI may include query parameters.
 	//
 	// TODO: update document on http-wasm-abi
-	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#get-path
+	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#get-uri
 	FuncGetURI = "get_uri"
 
 	// FuncSetURI Overwrites the request URI with one read from memory.
 	//
-	// Note: The URI includes any query parameters.
+	// Note: The URI may include query parameters.
 	//
+	// TODO: update document on http-wasm-abi
 	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#set-uri
 	FuncSetURI = "set_uri"
+
+	// FuncGetProtocolVersion writes the protocol version of the request to memory
+	// if it isn't larger than `buf-limit`. The result is its length in bytes.
+	// Ex. "HTTP/1.1", "HTTP/2", "HTTP/3"
+	//
+	// See https://www.rfc-editor.org/rfc/rfc9110#name-protocol-version
+	// TODO: document on http-wasm-abi
+	FuncGetProtocolVersion = "get_protocol_version"
 
 	// FuncGetRequestHeader writes a header value to memory if it exists and
 	// isn't larger than `buf-limit`. The result is `1<<32|len`, where `len` is
