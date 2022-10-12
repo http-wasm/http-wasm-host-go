@@ -259,7 +259,7 @@ func startMosn(t *testing.T, backendAddr string, wasm string) mosn {
 		AdminPort int
 	}{
 		Backend:   backendAddr,
-		Wasm:      filepath.Join("..", "..", "internal", "test", "testdata", wasm),
+		Wasm:      filepath.Join("..", "..", "internal", "test", "testdata", "examples", wasm),
 		Port:      port,
 		AdminPort: adminPort,
 	})

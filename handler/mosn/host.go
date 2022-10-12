@@ -19,6 +19,11 @@ var _ handler.Host = (*host)(nil)
 type host struct {
 }
 
+func (h host) GetProtocolVersion(ctx context.Context) string {
+	p, _ := variable.GetString(ctx, types.VarProtocol)
+	return p
+}
+
 func (host) GetRequestBody(ctx context.Context) []byte {
 	return filterFromContext(ctx).reqBody.Bytes()
 }
