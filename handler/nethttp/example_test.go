@@ -144,9 +144,12 @@ func Example_log() {
 	}
 
 	// Output:
-	// request body:
+	// POST / HTTP/1.1
+	//
 	// {"hello": "panda"}
-	// response body:
+	//
+	// HTTP/1.1 200
+	//
 	// {"hello": "world"}
 }
 

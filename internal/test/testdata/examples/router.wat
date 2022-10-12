@@ -2,13 +2,13 @@
 ;; how a handler works and that it is decoupled from other ABI such as WASI.
 ;; Most users will prefer a higher-level language such as C, Rust or TinyGo.
 (module $router
-  ;; get_uri writes the request URI value to memory, if it isn't larger than
-  ;; the buffer size limit. The result is the actual URI length in bytes.
+  ;; get_uri writes the URI to memory if it isn't larger than $buf_limit. The
+  ;; result is its length in bytes.
   (import "http-handler" "get_uri" (func $get_uri
     (param $buf i32) (param $buf_limit i32)
     (result (; len ;) i32)))
 
-  ;; set_uri overwrites the request URI with one read from memory.
+  ;; set_uri overwrites the URI with one read from memory.
   (import "http-handler" "set_uri" (func $set_uri
     (param $uri i32) (param $uri_len i32)))
 
