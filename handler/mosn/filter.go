@@ -16,6 +16,7 @@ import (
 )
 
 func init() {
+	// There's no API to configure a StreamFilter without using the global registry.
 	api.RegisterStream("httpwasm", factoryCreator)
 }
 
