@@ -4,9 +4,10 @@ import (
 	"bytes"
 	_ "embed"
 	"fmt"
-	"html/template"
 	"io"
 	"log"
+	"mosn.io/mosn/pkg/config/v2"
+	"mosn.io/mosn/test/util/mosn"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -34,11 +35,13 @@ var (
 	})
 )
 
-type mosn struct {
-	url    string
-	stdout *bytes.Buffer
-	stderr *bytes.Buffer
-	cmd    *exec.Cmd
+type testMosn struct {
+	url     string
+	logPath string
+	stdout  *bytes.Buffer
+	stderr  *bytes.Buffer
+	cmd     *exec.Cmd
+	*mosn.MosnWrapper
 }
 
 func TestAuth(t *testing.T) {
@@ -72,7 +75,7 @@ func TestAuth(t *testing.T) {
 	backend := httptest.NewServer(serveJson)
 	defer backend.Close()
 	mosn := startMosn(t, backend.Listener.Addr().String(), filepath.Join("examples", "auth.wasm"))
-	defer mosn.cmd.Process.Kill()
+	defer mosn.Close()
 
 	for _, tc := range tests {
 		tt := tc
@@ -273,46 +276,111 @@ func TestRedact(t *testing.T) {
 	}
 }
 
-func startMosn(t *testing.T, backendAddr string, wasm string) mosn {
+func startMosn(t *testing.T, backendAddr string, wasm string) testMosn {
 	t.Helper()
 
 	port := freePort()
 	adminPort := freePort()
 
-	configPath := filepath.Join(t.TempDir(), "config.json")
-	f, err := os.Create(configPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
+	logPath := filepath.Join(t.TempDir(), "mosn.log")
 
-	configTmpl, err := template.ParseFiles(filepath.Join("testdata", "config-tmpl.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = configTmpl.Execute(f, struct {
-		Backend   string
-		Wasm      string
-		Port      int
-		AdminPort int
-	}{
-		Backend:   backendAddr,
-		Wasm:      filepath.Join("..", "..", "internal", "test", "testdata", wasm),
-		Port:      port,
-		AdminPort: adminPort,
+	app := mosn.NewMosn(&v2.MOSNConfig{
+		Servers: []v2.ServerConfig{
+			{
+				DefaultLogPath: logPath,
+				Routers: []*v2.RouterConfiguration{
+					{
+						RouterConfigurationConfig: v2.RouterConfigurationConfig{
+							RouterConfigName: "server_router",
+						},
+						VirtualHosts: []v2.VirtualHost{
+							{
+								Name:    "serverHost",
+								Domains: []string{"*"},
+								Routers: []v2.Router{
+									{
+										RouterConfig: v2.RouterConfig{
+											Match: v2.RouterMatch{
+												Prefix: "/",
+											},
+											Route: v2.RouteAction{
+												RouterActionConfig: v2.RouterActionConfig{
+													ClusterName: "serverCluster",
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				Listeners: []v2.Listener{
+					{
+						ListenerConfig: v2.ListenerConfig{
+							Name:       "serverListener",
+							AddrConfig: fmt.Sprintf("127.0.0.1:%d", port),
+							BindToPort: true,
+							FilterChains: []v2.FilterChain{
+								{
+									FilterChainConfig: v2.FilterChainConfig{
+										Filters: []v2.Filter{
+											{
+												Type: "proxy",
+												Config: map[string]interface{}{
+													"downstream_protocol": "Http1",
+													"upstream_protocol":   "Http1",
+													"router_config_name":  "server_router",
+												},
+											},
+										},
+									},
+								},
+							},
+							StreamFilters: []v2.Filter{
+								{
+									Type: "httpwasm",
+									Config: map[string]interface{}{
+										"path":   filepath.Join("..", "..", "internal", "test", "testdata", wasm),
+										"config": "open sesame",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		ClusterManager: v2.ClusterManagerConfig{
+			Clusters: []v2.Cluster{
+				{
+					Name:                 "serverCluster",
+					ClusterType:          "SIMPLE",
+					LbType:               "LB_RANDOM",
+					MaxRequestPerConn:    1024,
+					ConnBufferLimitBytes: 32768,
+					Hosts: []v2.Host{
+						{
+							HostConfig: v2.HostConfig{
+								Address: backendAddr,
+							},
+						},
+					},
+				},
+			},
+		},
+		RawAdmin: &v2.Admin{
+			Address: &v2.AddressInfo{
+				SocketAddress: v2.SocketAddress{
+					Address:   "0.0.0.0",
+					PortValue: uint32(adminPort),
+				},
+			},
+		},
+		DisableUpgrade: true,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	cmd := exec.Command("./mosntest", "start", "--config", configPath)
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
+	app.Start()
 	for i := 0; i < 100; i++ {
 		time.Sleep(200 * time.Millisecond)
 		resp, err := http.Get(fmt.Sprintf("http://localhost:%d", adminPort))
@@ -321,16 +389,15 @@ func startMosn(t *testing.T, backendAddr string, wasm string) mosn {
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode == http.StatusOK {
-			return mosn{
-				url:    fmt.Sprintf("http://localhost:%d", port),
-				stdout: stdout,
-				stderr: stderr,
-				cmd:    cmd,
+			return testMosn{
+				url:         fmt.Sprintf("http://localhost:%d", port),
+				logPath:     logPath,
+				MosnWrapper: app,
 			}
 		}
 	}
 	t.Fatal("mosn start failed")
-	return mosn{}
+	return testMosn{}
 }
 
 func freePort() int {
