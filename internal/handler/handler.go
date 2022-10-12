@@ -161,7 +161,7 @@ func (r *Runtime) enableFeatures(ctx context.Context, features uint64) uint64 {
 
 // getConfig implements the WebAssembly host function handler.FuncGetConfig.
 func (r *Runtime) getConfig(ctx context.Context, mod wazeroapi.Module,
-	buf, bufLimit uint32) (configLen uint32) {
+	buf, bufLimit uint32) (len uint32) {
 	return writeIfUnderLimit(ctx, mod, buf, bufLimit, r.guestConfig)
 }
 
@@ -175,11 +175,19 @@ func (r *Runtime) log(ctx context.Context, mod wazeroapi.Module,
 	r.logFn(ctx, m)
 }
 
+// getProtocolVersion implements the WebAssembly host function
+// handler.FuncGetProtocolVersion.
+func (r *Runtime) getProtocolVersion(ctx context.Context, mod wazeroapi.Module,
+	buf, bufLimit uint32) (len uint32) {
+	protocolVersion := r.host.GetProtocolVersion(ctx)
+	return writeStringIfUnderLimit(ctx, mod, buf, bufLimit, protocolVersion)
+}
+
 // getURI implements the WebAssembly host function handler.FuncGetURI.
 func (r *Runtime) getURI(ctx context.Context, mod wazeroapi.Module,
-	buf, bufLimit uint32) (uriLen uint32) {
-	path := r.host.GetURI(ctx)
-	return writeStringIfUnderLimit(ctx, mod, buf, bufLimit, path)
+	buf, bufLimit uint32) (len uint32) {
+	uri := r.host.GetURI(ctx)
+	return writeStringIfUnderLimit(ctx, mod, buf, bufLimit, uri)
 }
 
 // getRequestHeader implements the WebAssembly host function
@@ -209,7 +217,7 @@ func (r *Runtime) getRequestHeader(ctx context.Context, mod wazeroapi.Module,
 // getRequestBody implements the WebAssembly host function
 // handler.FuncGetRequestBody.
 func (r *Runtime) getRequestBody(ctx context.Context, mod wazeroapi.Module,
-	buf, bufLimit uint32) (bodyLen uint32) {
+	buf, bufLimit uint32) (len uint32) {
 	body := r.host.GetRequestBody(ctx)
 	return writeIfUnderLimit(ctx, mod, buf, bufLimit, body)
 }
@@ -251,7 +259,7 @@ func (r *Runtime) setResponseHeader(ctx context.Context, mod wazeroapi.Module,
 // getResponseBody implements the WebAssembly host function
 // handler.FuncGetResponseBody.
 func (r *Runtime) getResponseBody(ctx context.Context, mod wazeroapi.Module,
-	buf, bufLimit uint32) (bodyLen uint32) {
+	buf, bufLimit uint32) (len uint32) {
 	body := r.host.GetResponseBody(ctx)
 	return writeIfUnderLimit(ctx, mod, buf, bufLimit, body)
 }
@@ -277,6 +285,8 @@ func (r *Runtime) compileHost(ctx context.Context) (wazero.CompiledModule, error
 			handler.FuncGetConfig, "buf", "buf_limit").
 		ExportFunction(handler.FuncLog, r.log,
 			handler.FuncLog, "message", "message_len").
+		ExportFunction(handler.FuncGetProtocolVersion, r.getProtocolVersion,
+			handler.FuncGetProtocolVersion, "buf", "buf_limit").
 		ExportFunction(handler.FuncGetURI, r.getURI,
 			handler.FuncGetURI, "buf", "buf_limit").
 		ExportFunction(handler.FuncSetURI, r.setURI,

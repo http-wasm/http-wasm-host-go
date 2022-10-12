@@ -89,6 +89,12 @@ func (h host) EnableFeatures(ctx context.Context, features handler.Features) (re
 	}
 }
 
+// GetProtocolVersion implements the same method as documented on handler.Host.
+func (h host) GetProtocolVersion(ctx context.Context) string {
+	r := requestStateFromContext(ctx).r
+	return r.Proto
+}
+
 // GetURI implements the same method as documented on handler.Host.
 func (h host) GetURI(ctx context.Context) string {
 	r := requestStateFromContext(ctx).r

@@ -9,8 +9,8 @@
   ;; bytes.
   (import "http-handler" "get_request_header" (func $get_request_header
     (param $name i32) (param $name_len i32)
-    (param $value i32) (param $value_limit i32)
-    (result (; 0 or 1 << 32| value_len ;) i64)))
+    (param $buf i32) (param $buf_limit i32)
+    (result (; 0 or 1 << 32| len ;) i64)))
 
   ;; next dispatches control to the next handler on the host.
   (import "http-handler" "next" (func $next))

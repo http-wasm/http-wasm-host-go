@@ -6,7 +6,7 @@
   ;; $buf_limit. The result is the length of the body in bytes.
   (type $get_body (func
     (param $body i32) (param $body_limit i32)
-    (result (; body_len ;) i32)))
+    (result (; len ;) i32)))
 
   ;; enable_features tries to enable the given features and returns the entire
   ;; feature bitflag supported by the host.
