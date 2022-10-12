@@ -96,7 +96,14 @@ func Example_auth() {
 
 func Example_log() {
 	ctx := context.Background()
-	logger := func(_ context.Context, message string) { fmt.Println(message) }
+	logger := func(_ context.Context, message string) {
+		// avoid errors due to ephemeral ports
+		if strings.HasPrefix(message, "Host: ") {
+			fmt.Println("Host: localhost")
+		} else {
+			fmt.Println(message)
+		}
+	}
 
 	// Configure and compile the WebAssembly guest binary. In this case, it is
 	// a logging interceptor.
@@ -116,7 +123,7 @@ func Example_log() {
 		if want, have := requestBody, string(body); want != have {
 			log.Panicf("unexpected request body, want: %q, have: %q", want, have)
 		}
-		r.Header.Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(responseBody)) // nolint
 	})
 
@@ -145,10 +152,16 @@ func Example_log() {
 
 	// Output:
 	// POST / HTTP/1.1
+	// Accept-Encoding: gzip
+	// Content-Length: 18
+	// Content-Type: application/json
+	// Host: localhost
+	// User-Agent: Go-http-client/1.1
 	//
 	// {"hello": "panda"}
 	//
 	// HTTP/1.1 200
+	// Content-Type: application/json
 	//
 	// {"hello": "world"}
 }

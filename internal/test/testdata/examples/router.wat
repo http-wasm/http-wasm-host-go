@@ -62,7 +62,7 @@
       (call $get_uri (global.get $uri) (global.get $uri_limit)))
 
     ;; if uri_len > uri_limit { next() }
-    (if (i32.gt_s (local.get $uri_len) (global.get $uri_limit))
+    (if (i32.gt_u (local.get $uri_len) (global.get $uri_limit))
       (then
         (call $next)
         (return))) ;; dispatch if the uri is too long.
@@ -70,7 +70,7 @@
     ;; Next, strip any paths starting with '/host' and dispatch.
 
     ;; if path_prefix_len <= uri_len
-    (if (i32.eqz (i32.gt_s (global.get $path_prefix_len) (local.get $uri_len)))
+    (if (i32.eqz (i32.gt_u (global.get $path_prefix_len) (local.get $uri_len)))
       (then
 
         (if (call $memeq ;; uri[0:path_prefix_len] == path_prefix
@@ -111,7 +111,7 @@
       (local.set $len (i32.sub (local.get $len) (i32.const 1))) ;; $len--
 
       ;; if $len > 0 { continue } else { break }
-      (br_if $len_gt_zero (i32.gt_s (local.get $len) (i32.const 0))))
+      (br_if $len_gt_zero (i32.gt_u (local.get $len) (i32.const 0))))
 
     (i32.const 1)) ;; return 1
 )

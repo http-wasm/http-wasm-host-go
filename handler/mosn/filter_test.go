@@ -1,4 +1,4 @@
-package mosn_test
+package wasm_test
 
 import (
 	_ "embed"
@@ -130,7 +130,22 @@ func TestLog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"wasm: request body:", `wasm: {"hello": "panda"}`, "wasm: response body:", `wasm: {"hello": "world"}`}
+	want := []string{
+		`wasm: POST / HTTP/1.1`,
+		`Host: 127.0.0.1:`,
+		`wasm: Content-Length: 18`,
+		`Content-Type: application/json`,
+		`User-Agent: Go-http-client/1.1`,
+		`Accept-Encoding: gzip`,
+		`wasm: `,
+		`wasm: {"hello": "panda"}`,
+		`wasm: HTTP/1.1 200`,
+		`Content-Length: 18`,
+		`Content-Type: text/plain; charset=utf-8`,
+		`Date: `,
+		`wasm: `,
+		`wasm: {"hello": "world"}`,
+	}
 
 	var missing []string
 	for _, w := range want {

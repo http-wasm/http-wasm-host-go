@@ -43,6 +43,10 @@ type Host interface {
 	// FuncGetProtocolVersion.
 	GetProtocolVersion(ctx context.Context) string
 
+	// GetRequestHeaderNames implements the WebAssembly function export
+	// FuncGetRequestHeaderNames.
+	GetRequestHeaderNames(ctx context.Context) []string
+
 	// GetRequestHeader implements the WebAssembly function export
 	// FuncGetRequestHeader. This returns false if the value doesn't exist.
 	GetRequestHeader(ctx context.Context, name string) (string, bool)
@@ -70,6 +74,10 @@ type Host interface {
 	// SetStatusCode implements the WebAssembly function export
 	// FuncSetStatusCode.
 	SetStatusCode(ctx context.Context, statusCode uint32)
+
+	// GetResponseHeaderNames implements the WebAssembly function export
+	// FuncGetResponseHeaderNames.
+	GetResponseHeaderNames(ctx context.Context) []string
 
 	// GetResponseHeader implements the WebAssembly function export
 	// FuncGetResponseHeader. This returns false if the value doesn't exist.

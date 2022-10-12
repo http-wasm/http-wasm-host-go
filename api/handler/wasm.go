@@ -83,6 +83,13 @@ const (
 	// TODO: document on http-wasm-abi
 	FuncGetProtocolVersion = "get_protocol_version"
 
+	// FuncGetRequestHeaderNames writes all header names, NUL-terminated, to
+	// memory if the encoded length isn't larger than `buf-limit`. The result
+	// is the encoded length in bytes. Ex. "Accept\0Date\0"
+	//
+	// TODO: document on http-wasm-abi
+	FuncGetRequestHeaderNames = "get_request_header_names"
+
 	// FuncGetRequestHeader writes a header value to memory if it exists and
 	// isn't larger than `buf-limit`. The result is `1<<32|len`, where `len` is
 	// the bytes written, or zero if the header doesn't exist.
@@ -147,6 +154,13 @@ const (
 	//
 	// TODO: document on http-wasm-abi
 	FuncSetStatusCode = "set_status_code"
+
+	// FuncGetResponseHeaderNames writes all header names, NUL-terminated, to
+	// memory if the encoded length isn't larger than `buf-limit`. The result
+	// is the encoded length in bytes. Ex. "Accept\0Date\0"
+	//
+	// TODO: document on http-wasm-abi
+	FuncGetResponseHeaderNames = "get_response_header_names"
 
 	// FuncGetResponseHeader writes a header value to memory if it exists and
 	// isn't larger than `buf-limit`. The result is `1<<32|len`, where `len` is

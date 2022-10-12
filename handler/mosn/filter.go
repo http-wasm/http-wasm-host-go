@@ -1,14 +1,14 @@
-package mosn
+package wasm
 
 import (
 	"context"
 	"errors"
 	"os"
 	"runtime"
-	"strconv"
 
 	"mosn.io/api"
 	"mosn.io/mosn/pkg/log"
+	mosnhttp "mosn.io/mosn/pkg/protocol/http"
 
 	httpwasm "github.com/http-wasm/http-wasm-host-go"
 	"github.com/http-wasm/http-wasm-host-go/api/handler"
@@ -78,8 +78,8 @@ type filter struct {
 	reqHeaders api.HeaderMap
 	reqBody    api.IoBuffer
 
-	respStatus  int
 	respHeaders api.HeaderMap
+	statusCode  int
 	respBody    []byte
 
 	nextCalled bool
@@ -93,12 +93,15 @@ func (f *filter) OnReceive(ctx context.Context, headers api.HeaderMap, body api.
 	f.reqBody = body
 
 	go func() {
+		// Handle dispatches to wazero which recovers any panics in host
+		// functions to an error return. Hence, we don't need to recover here.
 		f.ch <- f.rt.Handle(ctx)
 	}()
 
 	// Wait for the guest, running in a goroutine, to signal for us to continue. This will either be
 	// within an invocation of next() or when returning from the guest if next() was not called.
 	err := <-f.ch
+
 	if err != nil {
 		log.Proxy.Errorf(ctx, "wasm error: %v", err)
 	}
@@ -109,10 +112,16 @@ func (f *filter) OnReceive(ctx context.Context, headers api.HeaderMap, body api.
 
 	// TODO(anuraaga): All mosn filter examples pass the request headers when sending a hijack reply. Trying to send
 	// f.respHeaders causes the hijack to be ignored. Figure out why.
-	if respBody := f.respBody; len(respBody) > 0 {
-		f.receiverFilterHandler.SendHijackReplyWithBody(f.respStatus, headers, string(respBody))
+	var statusCode int
+	if resp, ok := f.respHeaders.(mosnhttp.ResponseHeader); ok {
+		statusCode = resp.StatusCode()
 	} else {
-		f.receiverFilterHandler.SendHijackReply(f.respStatus, headers)
+		statusCode = f.statusCode
+	}
+	if respBody := f.respBody; len(respBody) > 0 {
+		f.receiverFilterHandler.SendHijackReplyWithBody(statusCode, headers, string(respBody))
+	} else {
+		f.receiverFilterHandler.SendHijackReply(statusCode, headers)
 	}
 	return api.StreamFilterStop
 }
@@ -164,11 +173,6 @@ func (f *filter) Append(ctx context.Context, headers api.HeaderMap, buf api.IoBu
 		return api.StreamFilterContinue
 	}
 
-	// BUG: mosn doesn't use psuedoheaders.
-	if f.respStatus != 0 {
-		headers.Set(":status", strconv.Itoa(f.respStatus))
-	}
-
 	// TODO(anuraaga): Optimize
 	buf.Reset()
 	_ = buf.Append(f.respBody)
@@ -181,8 +185,8 @@ func (f *filter) SetSenderFilterHandler(handler api.StreamSenderFilterHandler) {
 
 type filterKey struct{}
 
-func (s *filter) enableFeatures(features handler.Features) {
-	s.features = s.features.WithEnabled(features)
+func (f *filter) enableFeatures(features handler.Features) {
+	f.features = f.features.WithEnabled(features)
 }
 
 func filterFromContext(ctx context.Context) *filter {
