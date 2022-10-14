@@ -223,6 +223,14 @@ func (r *Runtime) getProtocolVersion(ctx context.Context, mod wazeroapi.Module,
 	return writeStringIfUnderLimit(ctx, mod, buf, bufLimit, protocolVersion)
 }
 
+// getRequestHeaderNames implements the WebAssembly host function
+// handler.FuncGetRequestHeaderNames.
+func (r *Runtime) getRequestHeaderNames(ctx context.Context, mod wazeroapi.Module,
+	buf, bufLimit uint32) (len uint32) {
+	headers := r.host.GetRequestHeaderNames(ctx)
+	return writeNULTerminated(ctx, mod.Memory(), buf, bufLimit, headers)
+}
+
 // getRequestHeader implements the WebAssembly host function
 // handler.FuncGetRequestHeader.
 func (r *Runtime) getRequestHeader(ctx context.Context, mod wazeroapi.Module,
@@ -282,6 +290,14 @@ func (r *Runtime) getStatusCode(ctx context.Context) uint32 {
 // handler.FuncSetStatusCode.
 func (r *Runtime) setStatusCode(ctx context.Context, statusCode uint32) {
 	r.host.SetStatusCode(ctx, statusCode)
+}
+
+// getResponseHeaderNames implements the WebAssembly host function
+// handler.FuncGetResponseHeaderNames.
+func (r *Runtime) getResponseHeaderNames(ctx context.Context, mod wazeroapi.Module,
+	buf, bufLimit uint32) (len uint32) {
+	headers := r.host.GetResponseHeaderNames(ctx)
+	return writeNULTerminated(ctx, mod.Memory(), buf, bufLimit, headers)
 }
 
 // getResponseHeader implements the WebAssembly host function
@@ -351,6 +367,8 @@ func (r *Runtime) compileHost(ctx context.Context) (wazero.CompiledModule, error
 			handler.FuncSetURI, "uri", "uri_len").
 		ExportFunction(handler.FuncGetProtocolVersion, r.getProtocolVersion,
 			handler.FuncGetProtocolVersion, "buf", "buf_limit").
+		ExportFunction(handler.FuncGetRequestHeaderNames, r.getRequestHeaderNames,
+			handler.FuncGetRequestHeaderNames, "buf", "buf_limit").
 		ExportFunction(handler.FuncGetRequestHeader, r.getRequestHeader,
 			handler.FuncGetRequestHeader, "name", "name_len", "buf", "buf_limit").
 		ExportFunction(handler.FuncSetRequestHeader, r.setRequestHeader,
@@ -365,6 +383,8 @@ func (r *Runtime) compileHost(ctx context.Context) (wazero.CompiledModule, error
 			handler.FuncGetStatusCode).
 		ExportFunction(handler.FuncSetStatusCode, r.setStatusCode,
 			handler.FuncSetStatusCode, "status_code").
+		ExportFunction(handler.FuncGetResponseHeaderNames, r.getResponseHeaderNames,
+			handler.FuncGetResponseHeaderNames, "buf", "buf_limit").
 		ExportFunction(handler.FuncGetResponseHeader, r.getResponseHeader,
 			handler.FuncGetResponseHeader, "name", "name_len", "buf", "buf_limit").
 		ExportFunction(handler.FuncSetResponseHeader, r.setResponseHeader,

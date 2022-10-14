@@ -113,7 +113,7 @@
       (local.set $len (i32.sub (local.get $len) (i32.const 1))) ;; $len--
 
       ;; if $len > 0 { continue } else { break }
-      (br_if $len_gt_zero (i32.gt_s (local.get $len) (i32.const 0))))
+      (br_if $len_gt_zero (i32.gt_u (local.get $len) (i32.const 0))))
 
     (i32.const 1)) ;; return 1
 )

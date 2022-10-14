@@ -66,7 +66,7 @@
       (call $get_config (global.get $secret) (global.get $body)))
 
     ;; if config_len > body { panic }
-    (if (i32.gt_s (local.get $config_len) (global.get $body))
+    (if (i32.gt_u (local.get $config_len) (global.get $body))
       (then unreachable))
 
     ;; secret_len = config_len
@@ -115,7 +115,7 @@
       (call_indirect (type $get_body) (global.get $body) (local.get $limit) (local.get $body_fn)))
 
     ;; if len > limit { panic }
-    (if (i32.gt_s (local.get $len) (local.get $limit))
+    (if (i32.gt_u (local.get $len) (local.get $limit))
       (then unreachable)) ;; out of memory
 
     (local.get $len))
@@ -164,7 +164,7 @@
       (local.set $ptr (i32.add (local.get $ptr) (i32.const 1))) ;; ptr++
       (local.set $len (i32.sub (local.get $len) (i32.const 1))) ;; $len--
 
-      ;; if $len > 0 { continue } else { break }
+      ;; if can_redact(len) { continue } else { break }
       (br_if $redacting (call $can_redact (local.get $len))))
 
     ;; return whether the memory changed due to redaction
@@ -173,8 +173,8 @@
   ;; can_redact ensures the current pointer can be compared to the secret.
   (func $can_redact (param $len i32) (result (; ok ;) i32)
     (i32.and
-      (i32.gt_s (global.get $secret_len) (local.get $len)
-      (i32.gt_s (local.get $len) (i32.const 0)))))
+      (i32.gt_u (global.get $secret_len) (local.get $len)
+      (i32.gt_u (local.get $len) (i32.const 0)))))
 
   ;; memeq is like memcmp except it returns 0 (ne) or 1 (eq)
   (func $memeq (param $ptr1 i32) (param $ptr2 i32) (param $len i32) (result i32)
@@ -193,7 +193,7 @@
       (local.set $len (i32.sub (local.get $len) (i32.const 1))) ;; $len--
 
       ;; if $len > 0 { continue } else { break }
-      (br_if $len_gt_zero (i32.gt_s (local.get $len) (i32.const 0))))
+      (br_if $len_gt_zero (i32.gt_u (local.get $len) (i32.const 0))))
 
     (i32.const 1)) ;; return 1
 )
