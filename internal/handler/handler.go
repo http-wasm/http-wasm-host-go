@@ -385,10 +385,7 @@ func readBody(ctx context.Context, mod wazeroapi.Module, buf, bufLen uint32, r i
 	}
 
 	// Allocate a buf to write into directly
-	b, ok := mod.Memory().Read(ctx, buf, bufLen)
-	if !ok {
-		panic(fmt.Errorf("out of memory reading body"))
-	}
+	b := mustRead(ctx, mod.Memory(), "body", buf, bufLen)
 
 	// Attempt to fill the buffer until an error occurs. Notably, this works
 	// around a full read not returning EOF until the
