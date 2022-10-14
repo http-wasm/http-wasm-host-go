@@ -254,8 +254,6 @@ func Example_redact() {
 		fmt.Println(string(content))
 	}
 
-	// The below proves redaction worked for both request and response bodies!
-
 	// Output:
 	// ###########
 	// ###########

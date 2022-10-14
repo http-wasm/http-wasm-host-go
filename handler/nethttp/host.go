@@ -3,7 +3,6 @@ package wasm
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"net/textproto"
@@ -12,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/http-wasm/http-wasm-host-go/api/handler"
-	internalhandler "github.com/http-wasm/http-wasm-host-go/internal/handler"
 )
 
 type host struct{}
@@ -20,16 +18,8 @@ type host struct{}
 var _ handler.Host = host{}
 
 // EnableFeatures implements the same method as documented on handler.Host.
-func (h host) EnableFeatures(ctx context.Context, features handler.Features) (result handler.Features) {
-	if s, ok := ctx.Value(requestStateKey{}).(*requestState); ok {
-		s.enableFeatures(features)
-		return s.features
-	} else if i, ok := ctx.Value(internalhandler.InitStateKey{}).(*internalhandler.InitState); ok {
-		i.Features = i.Features.WithEnabled(features)
-		return i.Features
-	} else {
-		panic("unexpected context state")
-	}
+func (h host) EnableFeatures(ctx context.Context, features handler.Features) {
+	requestStateFromContext(ctx).enableFeatures(features)
 }
 
 // GetMethod implements the same method as documented on handler.Host.
@@ -116,21 +106,13 @@ func (h host) GetRequestHeader(ctx context.Context, name string) (string, bool) 
 // SetRequestHeader implements the same method as documented on handler.Host.
 func (h host) SetRequestHeader(ctx context.Context, name, value string) {
 	s := requestStateFromContext(ctx)
-	if s.calledNext && !s.features.IsEnabled(handler.FeatureBufferRequest) {
-		panic("already called next")
-	}
 	s.r.Header.Set(name, value)
 }
 
-// GetRequestBody implements the same method as documented on handler.Host.
-func (h host) GetRequestBody(ctx context.Context) []byte {
+// ReadRequestBody implements the same method as documented on handler.Host.
+func (h host) ReadRequestBody(ctx context.Context) io.ReadCloser {
 	s := requestStateFromContext(ctx)
-	defer s.r.Body.Close()
-	if b, err := io.ReadAll(s.r.Body); err != nil {
-		panic(err)
-	} else {
-		return b
-	}
+	return s.r.Body
 }
 
 // SetRequestBody implements the same method as documented on handler.Host.
@@ -148,10 +130,7 @@ func (h host) Next(ctx context.Context) {
 // GetStatusCode implements the same method as documented on handler.Host.
 func (h host) GetStatusCode(ctx context.Context) uint32 {
 	s := requestStateFromContext(ctx)
-	if w, ok := s.w.(*bufferingResponseWriter); !ok {
-		panic(fmt.Errorf("can't read back status code unless %s is enabled",
-			handler.FeatureBufferResponse))
-	} else if statusCode := w.statusCode; statusCode == 0 {
+	if statusCode := s.w.(*bufferingResponseWriter).statusCode; statusCode == 0 {
 		return 200 // default
 	} else {
 		return statusCode
@@ -163,10 +142,8 @@ func (h host) SetStatusCode(ctx context.Context, statusCode uint32) {
 	s := requestStateFromContext(ctx)
 	if w, ok := s.w.(*bufferingResponseWriter); ok {
 		w.statusCode = statusCode
-	} else if !s.calledNext {
-		s.w.WriteHeader(int(statusCode))
 	} else {
-		panic("already called next")
+		s.w.WriteHeader(int(statusCode))
 	}
 }
 
@@ -200,20 +177,14 @@ func (h host) GetResponseHeader(ctx context.Context, name string) (string, bool)
 // SetResponseHeader implements the same method as documented on handler.Host.
 func (h host) SetResponseHeader(ctx context.Context, name, value string) {
 	s := requestStateFromContext(ctx)
-	if s.calledNext && !s.features.IsEnabled(handler.FeatureBufferResponse) {
-		panic("already called next")
-	}
 	s.w.Header().Set(name, value)
 }
 
-// GetResponseBody implements the same method as documented on handler.Host.
-func (h host) GetResponseBody(ctx context.Context) []byte {
+// ReadResponseBody implements the same method as documented on handler.Host.
+func (h host) ReadResponseBody(ctx context.Context) io.ReadCloser {
 	s := requestStateFromContext(ctx)
-	if w, ok := s.w.(*bufferingResponseWriter); ok {
-		return w.body
-	}
-	panic(fmt.Errorf("can't read back response body unless %s is enabled",
-		handler.FeatureBufferResponse))
+	body := s.w.(*bufferingResponseWriter).body
+	return io.NopCloser(bytes.NewReader(body))
 }
 
 // SetResponseBody implements the same method as documented on handler.Host.
@@ -221,9 +192,7 @@ func (h host) SetResponseBody(ctx context.Context, body []byte) {
 	s := requestStateFromContext(ctx)
 	if w, ok := s.w.(*bufferingResponseWriter); ok {
 		w.body = body
-	} else if !s.calledNext {
-		s.w.Write(body) // nolint
 	} else {
-		panic("already called next")
+		s.w.Write(body) // nolint
 	}
 }
