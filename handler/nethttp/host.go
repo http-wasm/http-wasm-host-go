@@ -109,17 +109,18 @@ func (h host) SetRequestHeader(ctx context.Context, name, value string) {
 	s.r.Header.Set(name, value)
 }
 
-// ReadRequestBody implements the same method as documented on handler.Host.
-func (h host) ReadRequestBody(ctx context.Context) io.ReadCloser {
+// RequestBodyReader implements the same method as documented on handler.Host.
+func (h host) RequestBodyReader(ctx context.Context) io.ReadCloser {
 	s := requestStateFromContext(ctx)
 	return s.r.Body
 }
 
-// SetRequestBody implements the same method as documented on handler.Host.
-func (h host) SetRequestBody(ctx context.Context, body []byte) {
+// RequestBodyWriter implements the same method as documented on handler.Host.
+func (h host) RequestBodyWriter(ctx context.Context) io.Writer {
 	s := requestStateFromContext(ctx)
-	// TODO: verify if ownership transfer is ok or not.
-	s.r.Body = io.NopCloser(bytes.NewBuffer(body))
+	var b bytes.Buffer // reset
+	s.r.Body = io.NopCloser(&b)
+	return &b
 }
 
 // Next implements the same method as documented on handler.Host.
@@ -180,19 +181,20 @@ func (h host) SetResponseHeader(ctx context.Context, name, value string) {
 	s.w.Header().Set(name, value)
 }
 
-// ReadResponseBody implements the same method as documented on handler.Host.
-func (h host) ReadResponseBody(ctx context.Context) io.ReadCloser {
+// ResponseBodyReader implements the same method as documented on handler.Host.
+func (h host) ResponseBodyReader(ctx context.Context) io.ReadCloser {
 	s := requestStateFromContext(ctx)
 	body := s.w.(*bufferingResponseWriter).body
 	return io.NopCloser(bytes.NewReader(body))
 }
 
-// SetResponseBody implements the same method as documented on handler.Host.
-func (h host) SetResponseBody(ctx context.Context, body []byte) {
+// ResponseBodyWriter implements the same method as documented on handler.Host.
+func (h host) ResponseBodyWriter(ctx context.Context) io.Writer {
 	s := requestStateFromContext(ctx)
 	if w, ok := s.w.(*bufferingResponseWriter); ok {
-		w.body = body
+		w.body = nil // reset
+		return w
 	} else {
-		s.w.Write(body) // nolint
+		return s.w
 	}
 }

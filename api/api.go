@@ -1,6 +1,8 @@
 package api
 
-import "context"
+import (
+	"context"
+)
 
 // LogFunc logs a message to the host's logs.
 type LogFunc func(context.Context, string)

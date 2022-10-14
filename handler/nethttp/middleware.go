@@ -40,13 +40,13 @@ type requestState struct {
 
 func (s *requestState) enableFeatures(features handler.Features) {
 	s.features = s.features.WithEnabled(features)
+	if features.IsEnabled(handler.FeatureBufferRequest) {
+		s.r.Body = &bufferingRequestBody{delegate: s.r.Body}
+	}
 	if s.features.IsEnabled(handler.FeatureBufferResponse) {
 		if _, ok := s.w.(*bufferingResponseWriter); !ok { // don't double-wrap
 			s.w = &bufferingResponseWriter{delegate: s.w}
 		}
-	}
-	if features.IsEnabled(handler.FeatureBufferRequest) {
-		s.r.Body = &bufferingRequestBody{delegate: s.r.Body}
 	}
 }
 

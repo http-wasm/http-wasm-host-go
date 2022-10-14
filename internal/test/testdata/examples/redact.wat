@@ -28,10 +28,9 @@
   (import "http-handler" "read_request_body" (func $read_request_body
     (type $read_body)))
 
-  ;; set_request_body overwrites the request body with a value read from memory.
-  (import "http-handler" "set_request_body" (func $set_request_body
-    (param $body i32)
-    (param $len i32)))
+  ;; write_request_body overwrites the request body with a value read from memory.
+  (import "http-handler" "write_request_body" (func $write_request_body
+    (param $buf i32) (param $buf_len i32)))
 
   ;; next dispatches control to the next handler on the host.
   (import "http-handler" "next" (func $next))
@@ -40,10 +39,9 @@
   (import "http-handler" "read_response_body" (func $read_response_body
     (type $read_body)))
 
-  ;; set_response_body overwrites the response body with a value read from memory.
-  (import "http-handler" "set_response_body" (func $set_response_body
-    (param $body i32)
-    (param $len i32)))
+  ;; write_response_body overwrites the response body with a value read from memory.
+  (import "http-handler" "write_response_body" (func $write_response_body
+    (param $buf i32) (param $buf_len i32)))
 
   ;; http-wasm guests are required to export "memory", so that imported
   ;; functions like $read_response_body can read memory.
@@ -146,7 +144,7 @@
     ;; if redaction affected the copy of the request in memory...
     (if (call $redact (global.get $body) (local.get $len))
       (then ;; overwrite the request body on the host with the redacted one.
-        (call $set_request_body (global.get $body) (local.get $len))))
+        (call $write_request_body (global.get $body) (local.get $len))))
 
     (call $next) ;; dispatch with $feature_buffer_response enabled.
 
@@ -156,7 +154,7 @@
     ;; if redaction affected the copy of the response in memory...
     (if (call $redact (global.get $body) (local.get $len))
       (then ;; overwrite the response body on the host with the redacted one.
-        (call $set_response_body (global.get $body) (local.get $len)))))
+        (call $write_response_body (global.get $body) (local.get $len)))))
 
   ;; redact inline replaces any secrets in the memory region with hashes (#).
   (func $redact (param $ptr i32) (param $len i32) (result (; redacted ;) i32)
