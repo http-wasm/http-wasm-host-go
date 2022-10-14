@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"io"
 
 	"github.com/http-wasm/http-wasm-host-go/api"
 )
@@ -21,77 +22,77 @@ type Middleware[H any] interface {
 	api.Closer
 }
 
-// Host implements the host side of the WebAssembly module named HostModule.
+// Host supports the host side of the WebAssembly module named HostModule.
 // These callbacks are used by the guest function export FuncHandle.
 type Host interface {
-	// EnableFeatures implements the WebAssembly function export EnableFeatures.
-	EnableFeatures(ctx context.Context, features Features) Features
+	// EnableFeatures supports the WebAssembly function export EnableFeatures.
+	EnableFeatures(ctx context.Context, features Features)
 
-	// GetMethod implements the WebAssembly function export FuncGetMethod.
+	// GetMethod supports the WebAssembly function export FuncGetMethod.
 	GetMethod(ctx context.Context) string
 
-	// SetMethod implements the WebAssembly function export FuncSetMethod.
+	// SetMethod supports the WebAssembly function export FuncSetMethod.
 	SetMethod(ctx context.Context, method string)
 
-	// GetURI implements the WebAssembly function export FuncGetURI.
+	// GetURI supports the WebAssembly function export FuncGetURI.
 	GetURI(ctx context.Context) string
 
-	// SetURI implements the WebAssembly function export FuncSetURI.
+	// SetURI supports the WebAssembly function export FuncSetURI.
 	SetURI(ctx context.Context, uri string)
 
-	// GetProtocolVersion implements the WebAssembly function export
+	// GetProtocolVersion supports the WebAssembly function export
 	// FuncGetProtocolVersion.
 	GetProtocolVersion(ctx context.Context) string
 
-	// GetRequestHeaderNames implements the WebAssembly function export
+	// GetRequestHeaderNames supports the WebAssembly function export
 	// FuncGetRequestHeaderNames.
 	GetRequestHeaderNames(ctx context.Context) []string
 
-	// GetRequestHeader implements the WebAssembly function export
+	// GetRequestHeader supports the WebAssembly function export
 	// FuncGetRequestHeader. This returns false if the value doesn't exist.
 	GetRequestHeader(ctx context.Context, name string) (string, bool)
 
-	// SetRequestHeader implements the WebAssembly function export
+	// SetRequestHeader supports the WebAssembly function export
 	// FuncSetRequestHeader.
 	SetRequestHeader(ctx context.Context, name, value string)
 
-	// GetRequestBody implements the WebAssembly function export
-	// FuncGetRequestBody.
-	GetRequestBody(ctx context.Context) []byte
+	// ReadRequestBody supports the WebAssembly function export
+	// FuncReadRequestBody.
+	ReadRequestBody(ctx context.Context) io.ReadCloser
 
-	// SetRequestBody implements the WebAssembly function export
+	// SetRequestBody supports the WebAssembly function export
 	// FuncSetRequestBody.
 	SetRequestBody(ctx context.Context, body []byte)
 
-	// Next implements the WebAssembly function export FuncNext, which invokes
+	// Next supports the WebAssembly function export FuncNext, which invokes
 	// the next handler.
 	Next(ctx context.Context)
 
-	// GetStatusCode implements the WebAssembly function export
+	// GetStatusCode supports the WebAssembly function export
 	// FuncGetStatusCode.
 	GetStatusCode(ctx context.Context) uint32
 
-	// SetStatusCode implements the WebAssembly function export
+	// SetStatusCode supports the WebAssembly function export
 	// FuncSetStatusCode.
 	SetStatusCode(ctx context.Context, statusCode uint32)
 
-	// GetResponseHeaderNames implements the WebAssembly function export
+	// GetResponseHeaderNames supports the WebAssembly function export
 	// FuncGetResponseHeaderNames.
 	GetResponseHeaderNames(ctx context.Context) []string
 
-	// GetResponseHeader implements the WebAssembly function export
+	// GetResponseHeader supports the WebAssembly function export
 	// FuncGetResponseHeader. This returns false if the value doesn't exist.
 	GetResponseHeader(ctx context.Context, name string) (string, bool)
 
-	// SetResponseHeader implements the WebAssembly function export
+	// SetResponseHeader supports the WebAssembly function export
 	// FuncSetResponseHeader.
 	SetResponseHeader(ctx context.Context, name, value string)
 
-	// GetResponseBody implements the WebAssembly function export
-	// FuncGetResponseBody.
-	GetResponseBody(ctx context.Context) []byte
+	// ReadResponseBody supports the WebAssembly function export
+	// FuncReadResponseBody.
+	ReadResponseBody(ctx context.Context) io.ReadCloser
 
-	// SetResponseBody implements the WebAssembly function export
+	// SetResponseBody supports the WebAssembly function export
 	// FuncSetResponseBody.
 	SetResponseBody(ctx context.Context, body []byte)
 }

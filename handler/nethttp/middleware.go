@@ -32,11 +32,10 @@ func NewMiddleware(ctx context.Context, guest []byte, options ...httpwasm.Option
 type requestStateKey struct{}
 
 type requestState struct {
-	w          http.ResponseWriter
-	r          *http.Request
-	next       http.Handler
-	calledNext bool
-	features   handler.Features
+	w        http.ResponseWriter
+	r        *http.Request
+	next     http.Handler
+	features handler.Features
 }
 
 func (s *requestState) enableFeatures(features handler.Features) {
@@ -52,11 +51,6 @@ func (s *requestState) enableFeatures(features handler.Features) {
 }
 
 func (s *requestState) handleNext() {
-	if s.calledNext {
-		panic("already called next")
-	}
-	s.calledNext = true
-
 	// If we set the intercepted the request body for any reason, reset it
 	// before calling downstream.
 	if br, ok := s.r.Body.(*bufferingRequestBody); ok {

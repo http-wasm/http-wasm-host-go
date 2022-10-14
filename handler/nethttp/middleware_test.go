@@ -3,6 +3,7 @@ package wasm_test
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -74,6 +75,9 @@ func TestConfig(t *testing.T) {
 	}
 }
 
+func TestFoo(t *testing.T) {
+	fmt.Println(uint64(1 << 32))
+}
 func TestGetMethod(t *testing.T) {
 	mw, err := wasm.NewMiddleware(testCtx, test.BinTestProtocolVersion)
 	if err != nil {

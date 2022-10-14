@@ -90,14 +90,14 @@ func TestAuth(t *testing.T) {
 			}
 			resp.Body.Close()
 
-			if got, want := resp.StatusCode, tt.status; got != want {
-				t.Errorf("got %d, want %d", got, want)
+			if have, want := resp.StatusCode, tt.status; have != want {
+				t.Errorf("have %d, want %d", have, want)
 			}
 			if tt.authenticate {
 				if auth, ok := resp.Header["Www-Authenticate"]; !ok {
 					t.Error("Www-Authenticate header not found")
-				} else if got, want := auth[0], "Basic realm=\"test\""; got != want {
-					t.Errorf("got %s, want %s", got, want)
+				} else if have, want := auth[0], "Basic realm=\"test\""; have != want {
+					t.Errorf("have %s, want %s", have, want)
 				}
 			}
 		})
@@ -155,7 +155,7 @@ func TestLog(t *testing.T) {
 	}
 
 	if len(missing) > 0 {
-		t.Errorf("got %s, missing: %s", out, missing)
+		t.Errorf("have %s, missing: %s", out, missing)
 	}
 }
 
@@ -233,8 +233,8 @@ func TestRouter(t *testing.T) {
 			}
 			defer resp.Body.Close()
 			content, _ := io.ReadAll(resp.Body)
-			if got, want := string(content), tt.respBody; got != want {
-				t.Errorf("got %s, want %s", got, want)
+			if have, want := string(content), tt.respBody; have != want {
+				t.Errorf("have %s, want %s", have, want)
 			}
 		})
 	}
@@ -282,11 +282,11 @@ func TestRedact(t *testing.T) {
 			}
 			defer resp.Body.Close()
 			content, _ := io.ReadAll(resp.Body)
-			if got, want := string(content), tt.respBody; got != want {
-				t.Errorf("got %s, want %s", got, want)
+			if have, want := string(content), tt.respBody; have != want {
+				t.Errorf("have %s, want %s", have, want)
 			}
-			if got, want := reqBody, tt.respBody; got != want {
-				t.Errorf("got %s, want %s", got, want)
+			if have, want := reqBody, tt.respBody; have != want {
+				t.Errorf("have %s, want %s", have, want)
 			}
 		})
 	}

@@ -103,18 +103,26 @@ const (
 	// TODO: document on http-wasm-abi
 	FuncSetRequestHeader = "set_request_header"
 
-	// FuncGetRequestBody writes the request body to memory if it exists and
-	// isn't larger than `buf-limit`. The result is its length in bytes.
+	// FuncReadRequestBody reads up to `buf_len` bytes remaining in the body
+	// into memory at offset `buf`. A zero `buf_len` will panic. The result is
+	// `0 or EOF(1) << 32|len`, where `len` is the possibly zero length of
+	// bytes read.
+	//
+	// `EOF` means the body is exhausted, and future calls return `1<<32|0`
+	// (4294967296). `EOF` is not an error, so process `len` bytes returned
+	// regardless of `EOF`.
+	//
+	// Unlike `get_XXX` functions, this function is stateful, so repeated calls
+	// reads what's remaining in the stream, as opposed to starting from zero.
+	// Callers do not have to exhaust the stream until `EOF`.
 	//
 	// To allow downstream handlers to read the original request body, enable
 	// FeatureBufferRequest via FuncEnableFeatures. Otherwise, create a
 	// response inside the guest, or write an appropriate body via
 	// FuncSetRequestBody before calling FuncNext.
 	//
-	// Note: To enable FeatureBufferRequest, use FuncEnableFeatures.
-	//
 	// TODO: document on http-wasm-abi
-	FuncGetRequestBody = "get_request_body"
+	FuncReadRequestBody = "read_request_body"
 
 	// FuncSetRequestBody overwrites the request body with a value read from
 	// memory. In doing so, this overwrites the "Content-Length" header with
@@ -182,15 +190,25 @@ const (
 	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#set-response-header
 	FuncSetResponseHeader = "set_response_header"
 
-	// FuncGetResponseBody writes the body written by FuncNext to memory if it
-	// exists and isn't larger than `buf-limit`. The result is its length in
-	// bytes. This requires FeatureBufferResponse.
+	// FuncReadResponseBody reads up to `buf_len` bytes remaining in the body
+	// into memory at offset `buf`. A zero `buf_len` will panic. The result is
+	// `0 or EOF(1) << 32|len`, where `len` is the possibly zero length of
+	// bytes read.
 	//
-	// To enable FeatureBufferResponse, call FuncEnableFeatures prior to
-	// FuncNext. Doing otherwise, or calling before FuncNext will panic.
+	// `EOF` means the body is exhausted, and future calls return `1<<32|0`
+	// (4294967296). `EOF` is not an error, so process `len` bytes returned
+	// regardless of `EOF`.
+	//
+	// Unlike `get_XXX` functions, this function is stateful, so repeated calls
+	// reads what's remaining in the stream, as opposed to starting from zero.
+	// Callers do not have to exhaust the stream until `EOF`.
+	//
+	// Note: This function requires FeatureBufferResponse. To enable it, call
+	// FuncEnableFeatures prior to FuncNext. Doing otherwise, or calling before
+	// FuncNext will panic.
 	//
 	// TODO: document on http-wasm-abi
-	FuncGetResponseBody = "get_response_body"
+	FuncReadResponseBody = "read_response_body"
 
 	// FuncSetResponseBody overwrites the response body with a value read from
 	// memory. In doing so, this overwrites the "Content-Length" header with

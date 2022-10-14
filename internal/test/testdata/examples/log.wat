@@ -17,11 +17,14 @@
     (param $buf i32) (param $buf_limit i32)
     (result (; len ;) i32)))
 
-  ;; get_body writes the body to memory if it exists and isn't larger than
-  ;; $buf_limit. The result is the length of the body in bytes.
-  (type $get_body (func
-    (param $body i32) (param $body_limit i32)
-    (result (; len ;) i32)))
+  ;; read_body reads up to $buf_len bytes remaining in the body into memory at
+  ;; offset $buf. A zero $buf_len will panic.
+  ;;
+  ;; The result is `0 or EOF(1) << 32|len`, where `len` is the possibly zero
+  ;; length of bytes read.
+  (type $read_body (func
+    (param $buf i32) (param $buf_len i32)
+    (result (; 0 or EOF(1) << 32 | len ;) i64)))
 
   ;; enable_features tries to enable the given features and returns the entire
   ;; feature bitflag supported by the host.
@@ -58,8 +61,8 @@
   (import "http-handler" "get_request_header" (func $get_request_header
     (type $get_header)))
 
-  (import "http-handler" "get_request_body" (func $get_request_body
-    (type $get_body)))
+  (import "http-handler" "read_request_body" (func $read_request_body
+    (type $read_body)))
 
   ;; next dispatches control to the next handler on the host.
   (import "http-handler" "next" (func $next))
@@ -76,9 +79,9 @@
   (import "http-handler" "get_response_header" (func $get_response_header
     (type $get_header)))
 
-  ;; get_response_body requires $feature_buffer_response.
-  (import "http-handler" "get_response_body" (func $get_response_body
-    (type $get_body)))
+  ;; read_response_body requires $feature_buffer_response.
+  (import "http-handler" "read_response_body" (func $read_response_body
+    (type $read_body)))
 
   ;; http-wasm guests are required to export "memory", so that imported
   ;; functions like "log" can read memory.
@@ -91,13 +94,20 @@
   (table 6 funcref)
   (elem (i32.const 0) $get_request_header_names)
   (elem (i32.const 1) $get_request_header)
-  (elem (i32.const 2) $get_request_body)
+  (elem (i32.const 2) $read_request_body)
   (elem (i32.const 3) $get_response_header_names)
   (elem (i32.const 4) $get_response_header)
-  (elem (i32.const 5) $get_response_body)
+  (elem (i32.const 5) $read_response_body)
+  (func $log_request_headers (call $log_headers (i32.const 0) (i32.const 1)))
+  (func $log_request_body (call $log_body (i32.const 2)))
+  (func $log_response_headers (call $log_headers (i32.const 3) (i32.const 4)))
+  (func $log_response_body (call $log_body (i32.const 5)))
 
   ;; required_features := feature_buffer_request|feature_buffer_response
   (global $required_features i64 (i64.const 3))
+
+  ;; eof is the upper 32-bits of the $read_body result on EOF.
+  (global $eof i64 (i64.const 4294967296)) ;; `1<<32|0`
 
   ;; must_enable_buffering ensures we can inspect request and response bodies
   ;; without interfering with the next handler.
@@ -120,8 +130,8 @@
   (func $handle (export "handle")
     ;; This shows interception before the current request is handled.
     (call $log_request_line)
-    (call $log_headers (i32.const 0) (i32.const 1))
-    (call $log_body (i32.const 2))
+    (call $log_request_headers)
+    (call $log_request_body)
 
     ;; This handles the request, in whichever way defined by the host.
     (call $next)
@@ -131,8 +141,8 @@
 
     ;; Because we enabled buffering, we can log the response.
     (call $log_response_line)
-    (call $log_headers (i32.const 3) (i32.const 4))
-    (call $log_body (i32.const 5)))
+    (call $log_response_headers)
+    (call $log_response_body))
 
   ;; $log_request_line logs the request line. Ex "GET /foo HTTP/1.1"
   (func $log_request_line
@@ -311,16 +321,27 @@
 
   ;; log_body logs the body using the given function table index.
   (func $log_body (param $body_fn i32)
+    (local $result i64)
     (local $len i32)
 
-    ;; len = table[body_fn](0, mem_bytes)
-    (local.set $len
-      (call_indirect (type $get_body)
+    ;; result = table[body_fn](0, mem_bytes)
+    (local.set $result
+      (call_indirect (type $read_body)
         (i32.const 0)
         (global.get $mem_bytes)
         (local.get $body_fn)))
 
+    ;; len = uint32(result)
+    (local.set $len (i32.wrap_i64 (local.get $result)))
+
+    ;; don't log if there was no body
     (if (i32.eqz (local.get $len)) (then (return)))
+
+    ;; if result & eof != eof { panic }
+    (if (i64.ne
+          (i64.and (local.get $result) (global.get $eof))
+          (global.get $eof))
+      (then unreachable)) ;; fail as we couldn't buffer the whole response.
 
     ;; log("")
     (call $log (i32.const 0) (i32.const 0))

@@ -1,8 +1,10 @@
 package wasm
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 
 	mosnhttp "mosn.io/mosn/pkg/protocol/http"
@@ -12,23 +14,15 @@ import (
 	"mosn.io/pkg/protocol/http"
 
 	"github.com/http-wasm/http-wasm-host-go/api/handler"
-	internalhandler "github.com/http-wasm/http-wasm-host-go/internal/handler"
 )
 
 var _ handler.Host = host{}
 
 type host struct{}
 
-func (host) EnableFeatures(ctx context.Context, features handler.Features) handler.Features {
-	if f, ok := ctx.Value(filterKey{}).(*filter); ok {
-		f.enableFeatures(features)
-		return f.features
-	} else if i, ok := ctx.Value(internalhandler.InitStateKey{}).(*internalhandler.InitState); ok {
-		i.Features = i.Features.WithEnabled(features)
-		return i.Features
-	} else {
-		panic("unexpected context state")
-	}
+func (host) EnableFeatures(ctx context.Context, features handler.Features) {
+	f := ctx.Value(filterKey{}).(*filter)
+	f.enableFeatures(features)
 }
 
 func (h host) GetMethod(ctx context.Context) (method string) {
@@ -67,8 +61,9 @@ func (host) SetRequestHeader(ctx context.Context, name, value string) {
 	req.Set(name, value)
 }
 
-func (host) GetRequestBody(ctx context.Context) []byte {
-	return filterFromContext(ctx).reqBody.Bytes()
+func (host) ReadRequestBody(ctx context.Context) io.ReadCloser {
+	b := filterFromContext(ctx).reqBody.Bytes()
+	return io.NopCloser(bytes.NewReader(b))
 }
 
 func (host) SetRequestBody(ctx context.Context, body []byte) {
@@ -152,8 +147,8 @@ func (host) SetResponseHeader(ctx context.Context, name, value string) {
 	hdrs.Set(name, value)
 }
 
-func (host) GetResponseBody(ctx context.Context) []byte {
-	return filterFromContext(ctx).respBody
+func (host) ReadResponseBody(ctx context.Context) io.ReadCloser {
+	return io.NopCloser(bytes.NewReader(filterFromContext(ctx).respBody))
 }
 
 func (host) SetResponseBody(ctx context.Context, body []byte) {
