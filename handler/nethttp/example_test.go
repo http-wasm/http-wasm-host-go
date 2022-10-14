@@ -98,7 +98,7 @@ func Example_log() {
 	ctx := context.Background()
 	logger := func(_ context.Context, message string) {
 		// avoid errors due to ephemeral ports
-		if strings.HasPrefix(message, "Host: ") {
+		if strings.HasPrefix(message, "Host: 127.0.0.1:") {
 			fmt.Println("Host: localhost")
 		} else {
 			fmt.Println(message)
