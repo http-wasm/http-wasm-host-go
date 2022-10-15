@@ -434,6 +434,25 @@ func (r *Runtime) writeResponseBody(ctx context.Context, mod wazeroapi.Module,
 	writeBody(ctx, mod, buf, bufLen, w)
 }
 
+func mustBeforeNext(ctx context.Context, op string) (s *requestState) {
+	if s = requestStateFromContext(ctx); s.calledNext {
+		panic(fmt.Errorf("can't %s response after next handler", op))
+	}
+	return
+}
+
+func mustBeforeNextOrFeature(ctx context.Context, feature handler.Features, op string) (s *requestState) {
+	if s = requestStateFromContext(ctx); !s.calledNext {
+		// Assume this is serving a response from the guest.
+	} else if s.features.IsEnabled(feature) {
+		// Assume the guest is overwriting the response from next.
+	} else {
+		panic(fmt.Errorf("can't %s after next handler unless %s is enabled",
+			op, feature))
+	}
+	return
+}
+
 func (r *Runtime) compileHost(ctx context.Context) (wazero.CompiledModule, error) {
 	if compiled, err := r.runtime.NewHostModuleBuilder(handler.HostModule).
 		ExportFunction(handler.FuncEnableFeatures, r.enableFeatures,
@@ -494,25 +513,6 @@ func mustReadString(ctx context.Context, mem wazeroapi.Memory, fieldName string,
 }
 
 var emptyBody = make([]byte, 0)
-
-func mustBeforeNext(ctx context.Context, op string) (s *requestState) {
-	if s = requestStateFromContext(ctx); s.calledNext {
-		panic(fmt.Errorf("can't %s response after next handler", op))
-	}
-	return
-}
-
-func mustBeforeNextOrFeature(ctx context.Context, feature handler.Features, op string) (s *requestState) {
-	if s = requestStateFromContext(ctx); !s.calledNext {
-		// Assume this is serving a response from the guest.
-	} else if s.features.IsEnabled(feature) {
-		// Assume the guest is overwriting the response from next.
-	} else {
-		panic(fmt.Errorf("can't %s after next handler unless %s is enabled",
-			op, feature))
-	}
-	return
-}
 
 // mustRead is like api.Memory except that it panics if the offset and byteCount are out of range.
 func mustRead(ctx context.Context, mem wazeroapi.Memory, fieldName string, offset, byteCount uint32) []byte {
