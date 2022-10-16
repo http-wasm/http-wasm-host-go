@@ -56,13 +56,13 @@ type Host interface {
 	// FuncSetRequestHeader.
 	SetRequestHeader(ctx context.Context, name, value string)
 
-	// ReadRequestBody supports the WebAssembly function export
+	// RequestBodyReader supports the WebAssembly function export
 	// FuncReadRequestBody.
-	ReadRequestBody(ctx context.Context) io.ReadCloser
+	RequestBodyReader(ctx context.Context) io.ReadCloser
 
-	// SetRequestBody supports the WebAssembly function export
-	// FuncSetRequestBody.
-	SetRequestBody(ctx context.Context, body []byte)
+	// RequestBodyWriter supports the WebAssembly function export
+	// FuncWriteRequestBody.
+	RequestBodyWriter(ctx context.Context) io.Writer
 
 	// Next supports the WebAssembly function export FuncNext, which invokes
 	// the next handler.
@@ -88,11 +88,11 @@ type Host interface {
 	// FuncSetResponseHeader.
 	SetResponseHeader(ctx context.Context, name, value string)
 
-	// ReadResponseBody supports the WebAssembly function export
+	// ResponseBodyReader supports the WebAssembly function export
 	// FuncReadResponseBody.
-	ReadResponseBody(ctx context.Context) io.ReadCloser
+	ResponseBodyReader(ctx context.Context) io.ReadCloser
 
-	// SetResponseBody supports the WebAssembly function export
-	// FuncSetResponseBody.
-	SetResponseBody(ctx context.Context, body []byte)
+	// ResponseBodyWriter supports the WebAssembly function export
+	// FuncWriteResponseBody.
+	ResponseBodyWriter(ctx context.Context) io.Writer
 }

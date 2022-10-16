@@ -61,15 +61,15 @@ func (host) SetRequestHeader(ctx context.Context, name, value string) {
 	req.Set(name, value)
 }
 
-func (host) ReadRequestBody(ctx context.Context) io.ReadCloser {
+func (host) RequestBodyReader(ctx context.Context) io.ReadCloser {
 	b := filterFromContext(ctx).reqBody.Bytes()
 	return io.NopCloser(bytes.NewReader(b))
 }
 
-func (host) SetRequestBody(ctx context.Context, body []byte) {
-	buf := filterFromContext(ctx).reqBody
-	buf.Reset()
-	_ = buf.Append(body)
+func (host) RequestBodyWriter(ctx context.Context) io.Writer {
+	f := filterFromContext(ctx)
+	f.reqBody.Reset()
+	return writerFunc(f.WriteRequestBody)
 }
 
 func (host) GetURI(ctx context.Context) string {
@@ -147,12 +147,14 @@ func (host) SetResponseHeader(ctx context.Context, name, value string) {
 	hdrs.Set(name, value)
 }
 
-func (host) ReadResponseBody(ctx context.Context) io.ReadCloser {
+func (host) ResponseBodyReader(ctx context.Context) io.ReadCloser {
 	return io.NopCloser(bytes.NewReader(filterFromContext(ctx).respBody))
 }
 
-func (host) SetResponseBody(ctx context.Context, body []byte) {
-	filterFromContext(ctx).respBody = body
+func (host) ResponseBodyWriter(ctx context.Context) io.Writer {
+	f := filterFromContext(ctx)
+	f.respBody = nil // reset
+	return writerFunc(f.WriteResponseBody)
 }
 
 func mustGetString(ctx context.Context, name string) string {

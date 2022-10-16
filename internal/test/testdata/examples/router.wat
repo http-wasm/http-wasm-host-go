@@ -21,10 +21,9 @@
     (param $name i32) (param $name_len i32)
     (param $value i32) (param $value_len i32)))
 
-  ;; set_response_body overwrites the response body with a value read from memory.
-  (import "http-handler" "set_response_body" (func $set_response_body
-    (param $body i32)
-    (param $body_len i32)))
+  ;; write_response_body overwrites the response body with a value read from memory.
+  (import "http-handler" "write_response_body" (func $write_response_body
+    (param $buf i32) (param $buf_len i32)))
 
   ;; http-wasm guests are required to export "memory", so that imported
   ;; functions like "log" can read memory.
@@ -90,7 +89,7 @@
       (global.get $content_type_name_len)
       (global.get $content_type_value)
       (global.get $content_type_value_len))
-    (call $set_response_body
+    (call $write_response_body
       (global.get $body)
       (global.get $body_len)))
 

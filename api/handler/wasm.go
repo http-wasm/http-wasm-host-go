@@ -119,20 +119,21 @@ const (
 	// To allow downstream handlers to read the original request body, enable
 	// FeatureBufferRequest via FuncEnableFeatures. Otherwise, create a
 	// response inside the guest, or write an appropriate body via
-	// FuncSetRequestBody before calling FuncNext.
+	// FuncWriteRequestBody before calling FuncNext.
 	//
 	// TODO: document on http-wasm-abi
 	FuncReadRequestBody = "read_request_body"
 
-	// FuncSetRequestBody overwrites the request body with a value read from
-	// memory. In doing so, this overwrites the "Content-Length" header with
-	// its length.
+	// FuncWriteRequestBody reads `buf_len` bytes at memory offset `buf` and
+	// writes them to the pending request body. The first call overwrites any
+	// request body.
 	//
-	// To use this function after FuncNext, set FeatureBufferRequest via
-	// FuncEnableFeatures. Otherwise, this can be called when FuncNext wasn't.
+	// Unlike `set_XXX` functions, this function is stateful, so repeated calls
+	// write to the current stream.
 	//
+	// Note: This can only be called before FuncNext.
 	// TODO: document on http-wasm-abi
-	FuncSetRequestBody = "set_request_body"
+	FuncWriteRequestBody = "write_request_body"
 
 	// FuncNext calls a downstream handler and blocks until it is finished
 	// processing.
@@ -210,13 +211,15 @@ const (
 	// TODO: document on http-wasm-abi
 	FuncReadResponseBody = "read_response_body"
 
-	// FuncSetResponseBody overwrites the response body with a value read from
-	// memory. In doing so, this overwrites the "Content-Length" header with
-	// its length.
+	// FuncWriteResponseBody reads `buf_len` bytes at memory offset `buf` and
+	// writes them to the pending response body. The first call to this in
+	// FuncHandle or after FuncNext overwrites any response body.
 	//
-	// To use this function after FuncNext, set FeatureBufferResponse via
+	// Unlike `set_XXX` functions, this function is stateful, so repeated calls
+	// write to the current stream.
+	//
+	// Note: To use this function after FuncNext, set FeatureBufferResponse via
 	// FuncEnableFeatures. Otherwise, this can be called when FuncNext wasn't.
-	//
 	// TODO: document on http-wasm-abi
-	FuncSetResponseBody = "set_response_body"
+	FuncWriteResponseBody = "write_response_body"
 )

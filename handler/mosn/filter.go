@@ -192,3 +192,22 @@ func (f *filter) enableFeatures(features handler.Features) {
 func filterFromContext(ctx context.Context) *filter {
 	return ctx.Value(filterKey{}).(*filter)
 }
+
+// writerFunc implements io.Writer with a func.
+type writerFunc func(p []byte) (n int, err error)
+
+func (f writerFunc) Write(p []byte) (n int, err error) {
+	return f(p)
+}
+
+func (f *filter) WriteRequestBody(p []byte) (n int, err error) {
+	n = len(p)
+	err = f.reqBody.Append(p)
+	return
+}
+
+func (f *filter) WriteResponseBody(p []byte) (n int, err error) {
+	n = len(p)
+	f.respBody = append(f.respBody, p...)
+	return
+}

@@ -41,7 +41,7 @@ func (w *bufferingResponseWriter) Header() http.Header {
 
 // Write buffers the response body.
 func (w *bufferingResponseWriter) Write(bytes []byte) (int, error) {
-	w.body = bytes
+	w.body = append(w.body, bytes...)
 	return len(bytes), nil
 }
 
