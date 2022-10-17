@@ -38,40 +38,33 @@ func factoryCreator(config map[string]interface{}) (api.StreamFilterChainFactory
 		return nil, err
 	}
 	ctx := context.Background()
-	rt, err := internalhandler.NewRuntime(ctx, code, host{},
+	m, err := internalhandler.NewMiddleware(ctx, code, host{},
 		httpwasm.GuestConfig([]byte(conf)),
 		httpwasm.Logger(func(ctx context.Context, s string) {
 			log.Proxy.Infof(ctx, "wasm: %s", s)
 		}))
-	runtime.SetFinalizer(rt, func(rt *internalhandler.Runtime) {
-		rt.Close(context.Background())
+	runtime.SetFinalizer(m, func(m internalhandler.Middleware) {
+		m.Close(context.Background())
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	return &filterFactory{
-		rt: rt,
-	}, nil
+	return &filterFactory{m: m}, nil
 }
 
 type filterFactory struct {
-	rt *internalhandler.Runtime
+	m internalhandler.Middleware
 }
 
-func (f filterFactory) CreateFilterChain(context context.Context, callbacks api.StreamFilterChainFactoryCallbacks) {
-	fr := &filter{
-		rt: f.rt,
-		ch: make(chan error, 1),
-	}
+func (f filterFactory) CreateFilterChain(_ context.Context, callbacks api.StreamFilterChainFactoryCallbacks) {
+	fr := &filter{m: f.m, ch: make(chan error, 1), features: f.m.Features()}
 	callbacks.AddStreamReceiverFilter(fr, api.BeforeRoute)
 	callbacks.AddStreamSenderFilter(fr, api.BeforeSend)
 }
 
 type filter struct {
-	rt *internalhandler.Runtime
-
-	features handler.Features
+	m internalhandler.Middleware
 
 	receiverFilterHandler api.StreamReceiverFilterHandler
 
@@ -84,6 +77,8 @@ type filter struct {
 
 	nextCalled bool
 	ch         chan error
+
+	features handler.Features
 }
 
 func (f *filter) OnReceive(ctx context.Context, headers api.HeaderMap, body api.IoBuffer, _ api.HeaderMap) api.StreamFilterStatus {
@@ -95,7 +90,7 @@ func (f *filter) OnReceive(ctx context.Context, headers api.HeaderMap, body api.
 	go func() {
 		// Handle dispatches to wazero which recovers any panics in host
 		// functions to an error return. Hence, we don't need to recover here.
-		f.ch <- f.rt.Handle(ctx)
+		f.ch <- f.m.Handle(ctx)
 	}()
 
 	// Wait for the guest, running in a goroutine, to signal for us to continue. This will either be
@@ -135,32 +130,16 @@ func (f *filter) OnDestroy() {
 
 func (f *filter) Append(ctx context.Context, headers api.HeaderMap, buf api.IoBuffer, trailers api.HeaderMap) api.StreamFilterStatus {
 	if !f.nextCalled {
-		// TODO(anuraaga): All mosn filter examples pass the request headers when sending a hijack reply. We replace
-		// with response headers here until fixing that.
-		// There is no headers.Clear() for some reason.
-		headers.Range(func(key, value string) bool {
-			headers.Del(key)
-			return true
-		})
-		if f.respHeaders != nil {
-			f.respHeaders.Range(func(key, value string) bool {
-				headers.Set(key, value)
-				return true
-			})
-		}
+		clearAndCopyHeaders(headers, f.respHeaders)
 		return api.StreamFilterStop
 	}
 
 	ctx = context.WithValue(ctx, filterKey{}, f)
 
-	if f.respHeaders != nil {
-		f.respHeaders.Range(func(key, value string) bool {
-			headers.Set(key, value)
-			return true
-		})
+	f.respHeaders = copyHeaders(f.respHeaders, headers)
+	if buf != nil {
+		f.respBody = buf.Bytes()
 	}
-	f.respHeaders = headers
-	f.respBody = buf.Bytes()
 
 	// The guest called next, and as we have the upstream response now, we can resume it by
 	// signaling the channel.
@@ -180,7 +159,7 @@ func (f *filter) Append(ctx context.Context, headers api.HeaderMap, buf api.IoBu
 	return api.StreamFilterContinue
 }
 
-func (f *filter) SetSenderFilterHandler(handler api.StreamSenderFilterHandler) {
+func (f *filter) SetSenderFilterHandler(api.StreamSenderFilterHandler) {
 }
 
 type filterKey struct{}
@@ -191,6 +170,27 @@ func (f *filter) enableFeatures(features handler.Features) {
 
 func filterFromContext(ctx context.Context) *filter {
 	return ctx.Value(filterKey{}).(*filter)
+}
+
+func clearAndCopyHeaders(out, in api.HeaderMap) {
+	// TODO(anuraaga): All mosn filter examples pass the request headers when sending a hijack reply. We replace
+	// with response headers here until fixing that.
+	// There is no headers.Clear() for some reason.
+	out.Range(func(key, value string) bool {
+		out.Del(key)
+		return true
+	})
+	copyHeaders(in, out)
+}
+
+func copyHeaders(in, out api.HeaderMap) api.HeaderMap {
+	if in != nil {
+		in.Range(func(key, value string) bool {
+			out.Set(key, value)
+			return true
+		})
+	}
+	return out
 }
 
 // writerFunc implements io.Writer with a func.

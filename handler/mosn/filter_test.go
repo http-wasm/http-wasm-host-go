@@ -396,7 +396,6 @@ func startMosn(t *testing.T, backendAddr string, wasm string) testMosn {
 		},
 		DisableUpgrade: true,
 	})
-
 	app.Start()
 	for i := 0; i < 100; i++ {
 		time.Sleep(200 * time.Millisecond)

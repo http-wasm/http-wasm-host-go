@@ -16,15 +16,15 @@ var _ http.Handler = (*guest)(nil)
 type Middleware handler.Middleware[http.Handler]
 
 type middleware struct {
-	runtime *internalhandler.Runtime
+	m internalhandler.Middleware
 }
 
 func NewMiddleware(ctx context.Context, guest []byte, options ...httpwasm.Option) (Middleware, error) {
-	r, err := internalhandler.NewRuntime(ctx, guest, host{}, options...)
+	m, err := internalhandler.NewMiddleware(ctx, guest, host{}, options...)
 	if err != nil {
 		return nil, err
 	}
-	return &middleware{runtime: r}, nil
+	return &middleware{m: m}, nil
 }
 
 // requestStateKey is a context.Context value associated with a requestState
@@ -36,6 +36,12 @@ type requestState struct {
 	r        *http.Request
 	next     http.Handler
 	features handler.Features
+}
+
+func newRequestState(w http.ResponseWriter, r *http.Request, g *guest) *requestState {
+	s := &requestState{w: w, r: r, next: g.next}
+	s.enableFeatures(g.features)
+	return s
 }
 
 func (s *requestState) enableFeatures(features handler.Features) {
@@ -70,12 +76,12 @@ func requestStateFromContext(ctx context.Context) *requestState {
 
 // NewHandler implements the same method as documented on handler.Middleware.
 func (w *middleware) NewHandler(_ context.Context, next http.Handler) http.Handler {
-	return &guest{handle: w.runtime.Handle, next: next, features: w.runtime.Features}
+	return &guest{handle: w.m.Handle, next: next, features: w.m.Features()}
 }
 
 // Close implements the same method as documented on handler.Middleware.
 func (w *middleware) Close(ctx context.Context) error {
-	return w.runtime.Close(ctx)
+	return w.m.Close(ctx)
 }
 
 type guest struct {
@@ -88,9 +94,8 @@ type guest struct {
 func (g *guest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// The guest Wasm actually handles the request. As it may call host
 	// functions, we add context parameters of the current request.
-	s := &requestState{w: w, r: r, next: g.next}
+	s := newRequestState(w, r, g)
 	ctx := context.WithValue(r.Context(), requestStateKey{}, s)
-	(host{}).EnableFeatures(ctx, g.features)
 	if err := g.handle(ctx); err != nil {
 		// TODO: after testing, shouldn't send errors into the HTTP response.
 		w.WriteHeader(500)

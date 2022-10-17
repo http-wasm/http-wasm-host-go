@@ -64,6 +64,12 @@
   (import "http-handler" "read_request_body" (func $read_request_body
     (type $read_body)))
 
+  (import "http-handler" "get_request_trailer_names" (func $get_request_trailer_names
+    (type $get_header_names)))
+
+  (import "http-handler" "get_request_trailer" (func $get_request_trailer
+    (type $get_header)))
+
   ;; next dispatches control to the next handler on the host.
   (import "http-handler" "next" (func $next))
 
@@ -83,6 +89,12 @@
   (import "http-handler" "read_response_body" (func $read_response_body
     (type $read_body)))
 
+  (import "http-handler" "get_response_trailer_names" (func $get_response_trailer_names
+    (type $get_header_names)))
+
+  (import "http-handler" "get_response_trailer" (func $get_response_trailer
+    (type $get_header)))
+
   ;; http-wasm guests are required to export "memory", so that imported
   ;; functions like "log" can read memory.
   (memory (export "memory") 1 1 (; 1 page==64KB ;))
@@ -91,18 +103,27 @@
     (i32.sub (global.get $mem_bytes) (local.get $pos)))
 
   ;; define a function table for getting a request or response properties.
-  (table 6 funcref)
+  (table 10 funcref)
   (elem (i32.const 0) $get_request_header_names)
   (elem (i32.const 1) $get_request_header)
   (elem (i32.const 2) $read_request_body)
-  (elem (i32.const 3) $get_response_header_names)
-  (elem (i32.const 4) $get_response_header)
-  (elem (i32.const 5) $read_response_body)
+  (elem (i32.const 3) $get_request_trailer_names)
+  (elem (i32.const 4) $get_request_trailer)
+  (elem (i32.const 5) $get_response_header_names)
+  (elem (i32.const 6) $get_response_header)
+  (elem (i32.const 7) $read_response_body)
+  (elem (i32.const 8) $get_response_trailer_names)
+  (elem (i32.const 9) $get_response_trailer)
   (func $log_request_headers (call $log_headers (i32.const 0) (i32.const 1)))
   (func $log_request_body (call $log_body (i32.const 2)))
-  (func $log_response_headers (call $log_headers (i32.const 3) (i32.const 4)))
-  (func $log_response_body (call $log_body (i32.const 5)))
+  (func $log_request_trailers (call $log_headers (i32.const 3) (i32.const 4)))
+  (func $log_response_headers (call $log_headers (i32.const 5) (i32.const 6)))
+  (func $log_response_body (call $log_body (i32.const 7)))
+  (func $log_response_trailers (call $log_headers (i32.const 8) (i32.const 9)))
 
+  ;; We don't require the trailers features as it defaults to no-op when
+  ;; unsupported.
+  ;;
   ;; required_features := feature_buffer_request|feature_buffer_response
   (global $required_features i64 (i64.const 3))
 
@@ -132,6 +153,7 @@
     (call $log_request_line)
     (call $log_request_headers)
     (call $log_request_body)
+    (call $log_request_trailers)
 
     ;; This handles the request, in whichever way defined by the host.
     (call $next)
@@ -142,7 +164,8 @@
     ;; Because we enabled buffering, we can log the response.
     (call $log_response_line)
     (call $log_response_headers)
-    (call $log_response_body))
+    (call $log_response_body)
+    (call $log_response_trailers))
 
   ;; $log_request_line logs the request line. Ex "GET /foo HTTP/1.1"
   (func $log_request_line

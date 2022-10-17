@@ -22,7 +22,10 @@ type requestState struct {
 	requestBodyWriter  io.Writer
 	responseBodyReader io.ReadCloser
 	responseBodyWriter io.Writer
-	features           handler.Features
+
+	// features are the current request's features which may be more than
+	// Middleware.Features.
+	features handler.Features
 }
 
 func (r *requestState) closeRequest() (err error) {

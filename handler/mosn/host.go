@@ -7,7 +7,7 @@ import (
 	"io"
 	"net/url"
 
-	mosnhttp "mosn.io/mosn/pkg/protocol/http"
+	"mosn.io/api"
 	"mosn.io/mosn/pkg/types"
 	"mosn.io/mosn/pkg/variable"
 	"mosn.io/pkg/header"
@@ -20,20 +20,25 @@ var _ handler.Host = host{}
 
 type host struct{}
 
-func (host) EnableFeatures(ctx context.Context, features handler.Features) {
-	f := ctx.Value(filterKey{}).(*filter)
-	f.enableFeatures(features)
+// EnableFeatures implements the same method as documented on handler.Host.
+func (host) EnableFeatures(ctx context.Context, features handler.Features) handler.Features {
+	// Remove trailers until it is supported. See mosn/mosn#2145
+	features = features &^ handler.FeatureTrailers
+	if s, ok := ctx.Value(filterKey{}).(*filter); ok {
+		s.enableFeatures(features)
+	}
+	return features
 }
 
-func (h host) GetMethod(ctx context.Context) (method string) {
+func (host) GetMethod(ctx context.Context) (method string) {
 	return mustGetString(ctx, types.VarMethod)
 }
 
-func (h host) SetMethod(ctx context.Context, method string) {
+func (host) SetMethod(ctx context.Context, method string) {
 	mustSetString(ctx, types.VarMethod, method)
 }
 
-func (h host) GetProtocolVersion(ctx context.Context) string {
+func (host) GetProtocolVersion(ctx context.Context) string {
 	p := mustGetString(ctx, types.VarProtocol)
 	switch p {
 	case "Http1":
@@ -44,21 +49,17 @@ func (h host) GetProtocolVersion(ctx context.Context) string {
 	return p
 }
 
-func (h host) GetRequestHeaderNames(ctx context.Context) (names []string) {
-	filterFromContext(ctx).reqHeaders.Range(func(key, value string) bool {
-		names = append(names, key)
-		return true
-	})
-	return
+func (host) GetRequestHeaderNames(ctx context.Context) (names []string) {
+	return getHeaderNames(filterFromContext(ctx).reqHeaders)
 }
 
 func (host) GetRequestHeader(ctx context.Context, name string) (string, bool) {
-	return filterFromContext(ctx).reqHeaders.Get(name)
+	return getHeader(filterFromContext(ctx).reqHeaders, name)
 }
 
 func (host) SetRequestHeader(ctx context.Context, name, value string) {
-	req := filterFromContext(ctx).reqHeaders.(mosnhttp.RequestHeader)
-	req.Set(name, value)
+	f := filterFromContext(ctx)
+	f.reqHeaders = setHeader(f.reqHeaders, name, value)
 }
 
 func (host) RequestBodyReader(ctx context.Context) io.ReadCloser {
@@ -70,6 +71,19 @@ func (host) RequestBodyWriter(ctx context.Context) io.Writer {
 	f := filterFromContext(ctx)
 	f.reqBody.Reset()
 	return writerFunc(f.WriteRequestBody)
+}
+
+func (host) GetRequestTrailerNames(ctx context.Context) (names []string) {
+	return // no-op because trailers are unsupported: mosn/mosn#2145
+}
+
+func (host) GetRequestTrailer(ctx context.Context, name string) (value string, ok bool) {
+	return // no-op because trailers are unsupported: mosn/mosn#2145
+}
+
+func (host) SetRequestTrailer(ctx context.Context, name, value string) {
+	// panic because the user should know that trailers are not supported.
+	panic("trailers unsupported: mosn/mosn#2145")
 }
 
 func (host) GetURI(ctx context.Context) string {
@@ -126,25 +140,17 @@ func (host) SetStatusCode(ctx context.Context, statusCode uint32) {
 	}
 }
 
-func (h host) GetResponseHeaderNames(ctx context.Context) (names []string) {
-	filterFromContext(ctx).respHeaders.Range(func(key, value string) bool {
-		names = append(names, key)
-		return true
-	})
-	return
+func (host) GetResponseHeaderNames(ctx context.Context) (names []string) {
+	return getHeaderNames(filterFromContext(ctx).respHeaders)
 }
 
 func (host) GetResponseHeader(ctx context.Context, name string) (string, bool) {
-	return filterFromContext(ctx).respHeaders.Get(name)
+	return getHeader(filterFromContext(ctx).respHeaders, name)
 }
 
 func (host) SetResponseHeader(ctx context.Context, name, value string) {
-	hdrs := filterFromContext(ctx).respHeaders
-	if hdrs == nil {
-		hdrs = header.CommonHeader(make(map[string]string))
-		filterFromContext(ctx).respHeaders = hdrs
-	}
-	hdrs.Set(name, value)
+	f := filterFromContext(ctx)
+	f.respHeaders = setHeader(f.respHeaders, name, value)
 }
 
 func (host) ResponseBodyReader(ctx context.Context) io.ReadCloser {
@@ -155,6 +161,19 @@ func (host) ResponseBodyWriter(ctx context.Context) io.Writer {
 	f := filterFromContext(ctx)
 	f.respBody = nil // reset
 	return writerFunc(f.WriteResponseBody)
+}
+
+func (host) GetResponseTrailerNames(ctx context.Context) (names []string) {
+	return // no-op because trailers are unsupported: mosn/mosn#2145
+}
+
+func (host) GetResponseTrailer(ctx context.Context, name string) (value string, ok bool) {
+	return // no-op because trailers are unsupported: mosn/mosn#2145
+}
+
+func (host) SetResponseTrailer(ctx context.Context, name, value string) {
+	// panic because the user should know that trailers are not supported.
+	panic("trailers unsupported: mosn/mosn#2145")
 }
 
 func mustGetString(ctx context.Context, name string) string {
@@ -169,4 +188,30 @@ func mustSetString(ctx context.Context, name, value string) {
 	if err := variable.SetString(ctx, name, value); err != nil {
 		panic(err)
 	}
+}
+
+func getHeaderNames(headers api.HeaderMap) (names []string) {
+	if headers == nil {
+		return
+	}
+	headers.Range(func(key, value string) bool {
+		names = append(names, key)
+		return true
+	})
+	return
+}
+
+func getHeader(headers api.HeaderMap, name string) (string, bool) {
+	if headers == nil {
+		return "", false
+	}
+	return headers.Get(name)
+}
+
+func setHeader(headers api.HeaderMap, name string, value string) api.HeaderMap {
+	if headers == nil {
+		return header.CommonHeader(map[string]string{name: value})
+	}
+	headers.Set(name, value)
+	return headers
 }
