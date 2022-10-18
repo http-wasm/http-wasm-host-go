@@ -124,6 +124,11 @@ func Example_log() {
 			log.Panicf("unexpected request body, want: %q, have: %q", want, have)
 		}
 		w.Header().Set("Content-Type", "application/json")
+
+		// Use chunked encoding so we can set a test trailer
+		w.Header().Set("Transfer-Encoding", "chunked")
+		w.Header().Add("Trailer", "grpc-status")
+		w.Header().Add(http.TrailerPrefix+"grpc-status", "1")
 		w.Write([]byte(responseBody)) // nolint
 	})
 
@@ -162,8 +167,11 @@ func Example_log() {
 	//
 	// HTTP/1.1 200
 	// Content-Type: application/json
+	// Transfer-Encoding: chunked
+	// Trailer: grpc-status
 	//
 	// {"hello": "world"}
+	// grpc-status: 1
 }
 
 func Example_router() {

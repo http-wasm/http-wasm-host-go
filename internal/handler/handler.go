@@ -17,7 +17,22 @@ import (
 	"github.com/http-wasm/http-wasm-host-go/internal"
 )
 
-type Runtime struct {
+// Middleware implements the http-wasm handler ABI.
+// It is scoped to a single guest binary.
+type Middleware interface {
+	// Handle handles a request by calling handler.FuncHandle on the guest.
+	Handle(ctx context.Context) error
+
+	// Features are the features enabled while initializing the guest. This
+	// value won't change per-request.
+	Features() handler.Features
+
+	api.Closer
+}
+
+var _ Middleware = (*middleware)(nil)
+
+type middleware struct {
 	host                    handler.Host
 	runtime                 wazero.Runtime
 	hostModule, guestModule wazero.CompiledModule
@@ -26,10 +41,14 @@ type Runtime struct {
 	guestConfig             []byte
 	logFn                   api.LogFunc
 	pool                    sync.Pool
-	Features                handler.Features
+	features                handler.Features
 }
 
-func NewRuntime(ctx context.Context, guest []byte, host handler.Host, options ...httpwasm.Option) (*Runtime, error) {
+func (r *middleware) Features() handler.Features {
+	return r.features
+}
+
+func NewMiddleware(ctx context.Context, guest []byte, host handler.Host, options ...httpwasm.Option) (Middleware, error) {
 	o := &internal.WazeroOptions{
 		NewRuntime:   internal.DefaultRuntime,
 		NewNamespace: internal.DefaultNamespace,
@@ -42,10 +61,10 @@ func NewRuntime(ctx context.Context, guest []byte, host handler.Host, options ..
 
 	wr, err := o.NewRuntime(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("wasm: error creating runtime: %w", err)
+		return nil, fmt.Errorf("wasm: error creating middleware: %w", err)
 	}
 
-	r := &Runtime{
+	m := &middleware{
 		host:         host,
 		runtime:      wr,
 		newNamespace: o.NewNamespace,
@@ -54,27 +73,27 @@ func NewRuntime(ctx context.Context, guest []byte, host handler.Host, options ..
 		logFn:        o.Logger,
 	}
 
-	if r.hostModule, err = r.compileHost(ctx); err != nil {
-		_ = r.Close(ctx)
+	if m.hostModule, err = m.compileHost(ctx); err != nil {
+		_ = m.Close(ctx)
 		return nil, err
 	}
 
-	if r.guestModule, err = r.compileGuest(ctx, guest); err != nil {
-		_ = r.Close(ctx)
+	if m.guestModule, err = m.compileGuest(ctx, guest); err != nil {
+		_ = m.Close(ctx)
 		return nil, err
 	}
 
-	if g, err := r.newGuest(ctx); err != nil {
-		_ = r.Close(ctx)
+	if g, err := m.newGuest(ctx); err != nil {
+		_ = m.Close(ctx)
 		return nil, err
 	} else {
-		r.pool.Put(g)
+		m.pool.Put(g)
 	}
 
-	return r, nil
+	return m, nil
 }
 
-func (r *Runtime) compileGuest(ctx context.Context, wasm []byte) (wazero.CompiledModule, error) {
+func (r *middleware) compileGuest(ctx context.Context, wasm []byte) (wazero.CompiledModule, error) {
 	if guest, err := r.runtime.CompileModule(ctx, wasm); err != nil {
 		return nil, fmt.Errorf("wasm: error compiling guest: %w", err)
 	} else if handle, ok := guest.ExportedFunctions()[handler.FuncHandle]; !ok {
@@ -88,8 +107,8 @@ func (r *Runtime) compileGuest(ctx context.Context, wasm []byte) (wazero.Compile
 	}
 }
 
-// Handle handles a request by calling guest.handle.
-func (r *Runtime) Handle(ctx context.Context) error {
+// Handle implements Middleware.Handle
+func (r *middleware) Handle(ctx context.Context) error {
 	poolG := r.pool.Get()
 	if poolG == nil {
 		g, err := r.newGuest(ctx)
@@ -100,14 +119,14 @@ func (r *Runtime) Handle(ctx context.Context) error {
 	}
 	g := poolG.(*guest)
 	defer r.pool.Put(g)
-	s := &requestState{features: r.Features}
+	s := &requestState{features: r.features}
 	defer s.Close()
 	ctx = context.WithValue(ctx, requestStateKey{}, s)
 	return g.handle(ctx)
 }
 
 // next calls the same function as documented on handler.Host.
-func (r *Runtime) next(ctx context.Context) {
+func (r *middleware) next(ctx context.Context) {
 	s := requestStateFromContext(ctx)
 	if s.calledNext {
 		panic("already called next")
@@ -118,8 +137,8 @@ func (r *Runtime) next(ctx context.Context) {
 }
 
 // Close implements api.Closer
-func (r *Runtime) Close(ctx context.Context) error {
-	// We don't have to close any guests as the runtime will close it.
+func (r *middleware) Close(ctx context.Context) error {
+	// We don't have to close any guests as the middleware will close it.
 	return r.runtime.Close(ctx)
 }
 
@@ -129,7 +148,7 @@ type guest struct {
 	handleFunc wazeroapi.Function
 }
 
-func (r *Runtime) newGuest(ctx context.Context) (*guest, error) {
+func (r *middleware) newGuest(ctx context.Context) (*guest, error) {
 	ns, err := r.newNamespace(ctx, r.runtime)
 	if err != nil {
 		return nil, fmt.Errorf("wasm: error creating namespace: %w", err)
@@ -158,25 +177,26 @@ func (g *guest) handle(ctx context.Context) (err error) {
 }
 
 // enableFeatures implements the WebAssembly host function handler.FuncEnableFeatures.
-func (r *Runtime) enableFeatures(ctx context.Context, features uint64) uint64 {
+func (r *middleware) enableFeatures(ctx context.Context, features uint64) uint64 {
+	var enabled handler.Features
 	if s, ok := ctx.Value(requestStateKey{}).(*requestState); ok {
-		s.features = s.features.WithEnabled(handler.Features(features))
-		r.host.EnableFeatures(ctx, s.features)
-		return uint64(s.features)
+		s.features = r.host.EnableFeatures(ctx, s.features.WithEnabled(handler.Features(features)))
+		enabled = s.features
 	} else {
-		r.Features = r.Features.WithEnabled(handler.Features(features))
-		return uint64(r.Features)
+		r.features = r.host.EnableFeatures(ctx, r.features.WithEnabled(handler.Features(features)))
+		enabled = r.features
 	}
+	return uint64(enabled)
 }
 
 // getConfig implements the WebAssembly host function handler.FuncGetConfig.
-func (r *Runtime) getConfig(ctx context.Context, mod wazeroapi.Module,
+func (r *middleware) getConfig(ctx context.Context, mod wazeroapi.Module,
 	buf, bufLimit uint32) (len uint32) {
 	return writeIfUnderLimit(ctx, mod, buf, bufLimit, r.guestConfig)
 }
 
 // log implements the WebAssembly host function handler.FuncLog.
-func (r *Runtime) log(ctx context.Context, mod wazeroapi.Module,
+func (r *middleware) log(ctx context.Context, mod wazeroapi.Module,
 	message, messageLen uint32) {
 	var m string
 	if messageLen > 0 {
@@ -186,7 +206,7 @@ func (r *Runtime) log(ctx context.Context, mod wazeroapi.Module,
 }
 
 // getMethod implements the WebAssembly host function handler.FuncGetMethod.
-func (r *Runtime) getMethod(ctx context.Context, mod wazeroapi.Module,
+func (r *middleware) getMethod(ctx context.Context, mod wazeroapi.Module,
 	buf, bufLimit uint32) (len uint32) {
 	method := r.host.GetMethod(ctx)
 	return writeStringIfUnderLimit(ctx, mod, buf, bufLimit, method)
@@ -194,7 +214,7 @@ func (r *Runtime) getMethod(ctx context.Context, mod wazeroapi.Module,
 
 // getRequestHeader implements the WebAssembly host function
 // handler.FuncSetMethod.
-func (r *Runtime) setMethod(ctx context.Context, mod wazeroapi.Module,
+func (r *middleware) setMethod(ctx context.Context, mod wazeroapi.Module,
 	method, methodLen uint32) {
 	_ = mustBeforeNext(ctx, "set method")
 
@@ -207,7 +227,7 @@ func (r *Runtime) setMethod(ctx context.Context, mod wazeroapi.Module,
 }
 
 // getURI implements the WebAssembly host function handler.FuncGetURI.
-func (r *Runtime) getURI(ctx context.Context, mod wazeroapi.Module,
+func (r *middleware) getURI(ctx context.Context, mod wazeroapi.Module,
 	buf, bufLimit uint32) (len uint32) {
 	uri := r.host.GetURI(ctx)
 	return writeStringIfUnderLimit(ctx, mod, buf, bufLimit, uri)
@@ -215,7 +235,7 @@ func (r *Runtime) getURI(ctx context.Context, mod wazeroapi.Module,
 
 // getRequestHeader implements the WebAssembly host function
 // handler.FuncSetURI.
-func (r *Runtime) setURI(ctx context.Context, mod wazeroapi.Module,
+func (r *middleware) setURI(ctx context.Context, mod wazeroapi.Module,
 	uri, uriLen uint32) {
 	var p string
 	if uriLen > 0 { // overwrite with empty is supported
@@ -226,7 +246,7 @@ func (r *Runtime) setURI(ctx context.Context, mod wazeroapi.Module,
 
 // getProtocolVersion implements the WebAssembly host function
 // handler.FuncGetProtocolVersion.
-func (r *Runtime) getProtocolVersion(ctx context.Context, mod wazeroapi.Module,
+func (r *middleware) getProtocolVersion(ctx context.Context, mod wazeroapi.Module,
 	buf, bufLimit uint32) uint32 {
 	protocolVersion := r.host.GetProtocolVersion(ctx)
 	if len(protocolVersion) == 0 {
@@ -237,7 +257,7 @@ func (r *Runtime) getProtocolVersion(ctx context.Context, mod wazeroapi.Module,
 
 // getRequestHeaderNames implements the WebAssembly host function
 // handler.FuncGetRequestHeaderNames.
-func (r *Runtime) getRequestHeaderNames(ctx context.Context, mod wazeroapi.Module,
+func (r *middleware) getRequestHeaderNames(ctx context.Context, mod wazeroapi.Module,
 	buf, bufLimit uint32) (len uint32) {
 	headers := r.host.GetRequestHeaderNames(ctx)
 	return writeNULTerminated(ctx, mod.Memory(), buf, bufLimit, headers)
@@ -245,8 +265,8 @@ func (r *Runtime) getRequestHeaderNames(ctx context.Context, mod wazeroapi.Modul
 
 // getRequestHeader implements the WebAssembly host function
 // handler.FuncGetRequestHeader.
-func (r *Runtime) getRequestHeader(ctx context.Context, mod wazeroapi.Module,
-	name, nameLen, buf, bufLimit uint32) (result uint64) {
+func (r *middleware) getRequestHeader(ctx context.Context, mod wazeroapi.Module,
+	name, nameLen, buf, bufLimit uint32) (okLen uint64) {
 	if nameLen == 0 {
 		panic("HTTP header name cannot be empty")
 	}
@@ -255,13 +275,13 @@ func (r *Runtime) getRequestHeader(ctx context.Context, mod wazeroapi.Module,
 	if !ok {
 		return // value doesn't exist
 	}
-	result = uint64(1<<32) | uint64(writeStringIfUnderLimit(ctx, mod, buf, bufLimit, v))
+	okLen = uint64(1<<32) | uint64(writeStringIfUnderLimit(ctx, mod, buf, bufLimit, v))
 	return
 }
 
 // setRequestHeader implements the WebAssembly host function
 // handler.FuncRequestHeader.
-func (r *Runtime) setRequestHeader(ctx context.Context, mod wazeroapi.Module,
+func (r *middleware) setRequestHeader(ctx context.Context, mod wazeroapi.Module,
 	name, nameLen, value, valueLen uint32) {
 	_ = mustBeforeNext(ctx, "set request header")
 
@@ -275,8 +295,8 @@ func (r *Runtime) setRequestHeader(ctx context.Context, mod wazeroapi.Module,
 
 // readRequestBody implements the WebAssembly host function
 // handler.FuncReadRequestBody.
-func (r *Runtime) readRequestBody(ctx context.Context, mod wazeroapi.Module,
-	buf, bufLen uint32) (result uint64) {
+func (r *middleware) readRequestBody(ctx context.Context, mod wazeroapi.Module,
+	buf, bufLimit uint32) (eofLen uint64) {
 	s := mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "read response body")
 
 	// Lazy create the reader.
@@ -286,12 +306,12 @@ func (r *Runtime) readRequestBody(ctx context.Context, mod wazeroapi.Module,
 		s.requestBodyReader = reader
 	}
 
-	return readBody(ctx, mod, buf, bufLen, reader)
+	return readBody(ctx, mod, buf, bufLimit, reader)
 }
 
 // writeRequestBody implements the WebAssembly host function
 // handler.FuncWriteRequestBody.
-func (r *Runtime) writeRequestBody(ctx context.Context, mod wazeroapi.Module,
+func (r *middleware) writeRequestBody(ctx context.Context, mod wazeroapi.Module,
 	buf, bufLen uint32) {
 	s := mustBeforeNext(ctx, "write request body")
 
@@ -316,9 +336,47 @@ func writeBody(ctx context.Context, mod wazeroapi.Module, buf, bufLen uint32, w 
 	}
 }
 
+// getRequestTrailerNames implements the WebAssembly host function
+// handler.FuncGetRequestTrailerNames.
+func (r *middleware) getRequestTrailerNames(ctx context.Context, mod wazeroapi.Module,
+	buf, bufLimit uint32) (len uint32) {
+	trailers := r.host.GetRequestTrailerNames(ctx)
+	return writeNULTerminated(ctx, mod.Memory(), buf, bufLimit, trailers)
+}
+
+// getRequestTrailer implements the WebAssembly host function
+// handler.FuncGetRequestTrailer.
+func (r *middleware) getRequestTrailer(ctx context.Context, mod wazeroapi.Module,
+	name, nameLen, buf, bufLimit uint32) (okLen uint64) {
+	if nameLen == 0 {
+		panic("HTTP trailer name cannot be empty")
+	}
+	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
+	v, ok := r.host.GetRequestTrailer(ctx, n)
+	if !ok {
+		return // value doesn't exist
+	}
+	okLen = uint64(1<<32) | uint64(writeStringIfUnderLimit(ctx, mod, buf, bufLimit, v))
+	return
+}
+
+// setRequestTrailer implements the WebAssembly host function
+// handler.FuncRequestTrailer.
+func (r *middleware) setRequestTrailer(ctx context.Context, mod wazeroapi.Module,
+	name, nameLen, value, valueLen uint32) {
+	_ = mustBeforeNext(ctx, "set request trailer")
+
+	if nameLen == 0 {
+		panic("HTTP trailer name cannot be empty")
+	}
+	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
+	v := mustReadString(ctx, mod.Memory(), "value", value, valueLen)
+	r.host.SetRequestTrailer(ctx, n, v)
+}
+
 // getStatusCode implements the WebAssembly host function
 // handler.FuncGetStatusCode.
-func (r *Runtime) getStatusCode(ctx context.Context) uint32 {
+func (r *middleware) getStatusCode(ctx context.Context) uint32 {
 	_ = mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "get status code")
 
 	return r.host.GetStatusCode(ctx)
@@ -326,7 +384,7 @@ func (r *Runtime) getStatusCode(ctx context.Context) uint32 {
 
 // setStatusCode implements the WebAssembly host function
 // handler.FuncSetStatusCode.
-func (r *Runtime) setStatusCode(ctx context.Context, statusCode uint32) {
+func (r *middleware) setStatusCode(ctx context.Context, statusCode uint32) {
 	_ = mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "set status code")
 
 	r.host.SetStatusCode(ctx, statusCode)
@@ -334,7 +392,7 @@ func (r *Runtime) setStatusCode(ctx context.Context, statusCode uint32) {
 
 // getResponseHeaderNames implements the WebAssembly host function
 // handler.FuncGetResponseHeaderNames.
-func (r *Runtime) getResponseHeaderNames(ctx context.Context, mod wazeroapi.Module,
+func (r *middleware) getResponseHeaderNames(ctx context.Context, mod wazeroapi.Module,
 	buf, bufLimit uint32) (len uint32) {
 	_ = mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "get response header names")
 
@@ -344,8 +402,8 @@ func (r *Runtime) getResponseHeaderNames(ctx context.Context, mod wazeroapi.Modu
 
 // getResponseHeader implements the WebAssembly host function
 // handler.FuncGetResponseHeader.
-func (r *Runtime) getResponseHeader(ctx context.Context, mod wazeroapi.Module,
-	name, nameLen, buf, bufLimit uint32) (result uint64) {
+func (r *middleware) getResponseHeader(ctx context.Context, mod wazeroapi.Module,
+	name, nameLen, buf, bufLimit uint32) (okLen uint64) {
 	_ = mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "get response header")
 
 	if nameLen == 0 {
@@ -356,13 +414,13 @@ func (r *Runtime) getResponseHeader(ctx context.Context, mod wazeroapi.Module,
 	if !ok {
 		return // value doesn't exist
 	}
-	result = uint64(1<<32) | uint64(writeStringIfUnderLimit(ctx, mod, buf, bufLimit, v))
+	okLen = uint64(1<<32) | uint64(writeStringIfUnderLimit(ctx, mod, buf, bufLimit, v))
 	return
 }
 
 // setResponseHeader implements the WebAssembly host function
 // handler.FuncRequestHeader.
-func (r *Runtime) setResponseHeader(ctx context.Context, mod wazeroapi.Module,
+func (r *middleware) setResponseHeader(ctx context.Context, mod wazeroapi.Module,
 	name, nameLen, value, valueLen uint32) {
 	_ = mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "set response header")
 
@@ -376,8 +434,8 @@ func (r *Runtime) setResponseHeader(ctx context.Context, mod wazeroapi.Module,
 
 // readResponseBody implements the WebAssembly host function
 // handler.FuncReadResponseBody.
-func (r *Runtime) readResponseBody(ctx context.Context, mod wazeroapi.Module,
-	buf, bufLen uint32) (result uint64) {
+func (r *middleware) readResponseBody(ctx context.Context, mod wazeroapi.Module,
+	buf, bufLimit uint32) (eofLen uint64) {
 	s := mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "read response body")
 
 	// Lazy create the reader.
@@ -387,23 +445,23 @@ func (r *Runtime) readResponseBody(ctx context.Context, mod wazeroapi.Module,
 		s.responseBodyReader = reader
 	}
 
-	return readBody(ctx, mod, buf, bufLen, reader)
+	return readBody(ctx, mod, buf, bufLimit, reader)
 }
 
-func readBody(ctx context.Context, mod wazeroapi.Module, buf, bufLen uint32, r io.Reader) uint64 {
-	// buf_len 0 serves no purpose as implementations won't return EOF on it.
-	if bufLen == 0 {
-		panic(fmt.Errorf("buf_len==0 reading body"))
+func readBody(ctx context.Context, mod wazeroapi.Module, buf, bufLimit uint32, r io.Reader) (eofLen uint64) {
+	// buf_limit 0 serves no purpose as implementations won't return EOF on it.
+	if bufLimit == 0 {
+		panic(fmt.Errorf("buf_limit==0 reading body"))
 	}
 
 	// Allocate a buf to write into directly
-	b := mustRead(ctx, mod.Memory(), "body", buf, bufLen)
+	b := mustRead(ctx, mod.Memory(), "body", buf, bufLimit)
 
 	// Attempt to fill the buffer until an error occurs. Notably, this works
 	// around a full read not returning EOF until the
 	var err error
 	n := uint32(0)
-	for n < bufLen && err == nil {
+	for n < bufLimit && err == nil {
 		var nn int
 		nn, err = r.Read(b[n:])
 		n += uint32(nn)
@@ -420,7 +478,7 @@ func readBody(ctx context.Context, mod wazeroapi.Module, buf, bufLen uint32, r i
 
 // writeResponseBody implements the WebAssembly host function
 // handler.FuncWriteResponseBody.
-func (r *Runtime) writeResponseBody(ctx context.Context, mod wazeroapi.Module,
+func (r *middleware) writeResponseBody(ctx context.Context, mod wazeroapi.Module,
 	buf, bufLen uint32) {
 	s := mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "write response body")
 
@@ -432,6 +490,48 @@ func (r *Runtime) writeResponseBody(ctx context.Context, mod wazeroapi.Module,
 	}
 
 	writeBody(ctx, mod, buf, bufLen, w)
+}
+
+// getResponseTrailerNames implements the WebAssembly host function
+// handler.FuncGetResponseTrailerNames.
+func (r *middleware) getResponseTrailerNames(ctx context.Context, mod wazeroapi.Module,
+	buf, bufLimit uint32) (len uint32) {
+	_ = mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "get response trailer names")
+
+	trailers := r.host.GetResponseTrailerNames(ctx)
+	return writeNULTerminated(ctx, mod.Memory(), buf, bufLimit, trailers)
+}
+
+// getResponseTrailer implements the WebAssembly host function
+// handler.FuncGetResponseTrailer.
+func (r *middleware) getResponseTrailer(ctx context.Context, mod wazeroapi.Module,
+	name, nameLen, buf, bufLimit uint32) (okLen uint64) {
+	_ = mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "get response trailer")
+
+	if nameLen == 0 {
+		panic("HTTP trailer name cannot be empty")
+	}
+	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
+	v, ok := r.host.GetResponseTrailer(ctx, n)
+	if !ok {
+		return // value doesn't exist
+	}
+	okLen = uint64(1<<32) | uint64(writeStringIfUnderLimit(ctx, mod, buf, bufLimit, v))
+	return
+}
+
+// setResponseTrailer implements the WebAssembly host function
+// handler.FuncRequestTrailer.
+func (r *middleware) setResponseTrailer(ctx context.Context, mod wazeroapi.Module,
+	name, nameLen, value, valueLen uint32) {
+	_ = mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "set response trailer")
+
+	if nameLen == 0 {
+		panic("HTTP trailer name cannot be empty")
+	}
+	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
+	v := mustReadString(ctx, mod.Memory(), "value", value, valueLen)
+	r.host.SetResponseTrailer(ctx, n, v)
 }
 
 func mustBeforeNext(ctx context.Context, op string) (s *requestState) {
@@ -453,7 +553,7 @@ func mustBeforeNextOrFeature(ctx context.Context, feature handler.Features, op s
 	return
 }
 
-func (r *Runtime) compileHost(ctx context.Context) (wazero.CompiledModule, error) {
+func (r *middleware) compileHost(ctx context.Context) (wazero.CompiledModule, error) {
 	if compiled, err := r.runtime.NewHostModuleBuilder(handler.HostModule).
 		ExportFunction(handler.FuncEnableFeatures, r.enableFeatures,
 			handler.FuncEnableFeatures, "features").
@@ -481,6 +581,12 @@ func (r *Runtime) compileHost(ctx context.Context) (wazero.CompiledModule, error
 			handler.FuncReadRequestBody, "buf", "buf_limit").
 		ExportFunction(handler.FuncWriteRequestBody, r.writeRequestBody,
 			handler.FuncWriteRequestBody, "body", "body_len").
+		ExportFunction(handler.FuncGetRequestTrailerNames, r.getRequestTrailerNames,
+			handler.FuncGetRequestTrailerNames, "buf", "buf_limit").
+		ExportFunction(handler.FuncGetRequestTrailer, r.getRequestTrailer,
+			handler.FuncGetRequestTrailer, "name", "name_len", "buf", "buf_limit").
+		ExportFunction(handler.FuncSetRequestTrailer, r.setRequestTrailer,
+			handler.FuncSetRequestTrailer, "name", "name_len", "value", "value_len").
 		ExportFunction(handler.FuncNext, r.next,
 			handler.FuncNext).
 		ExportFunction(handler.FuncGetStatusCode, r.getStatusCode,
@@ -494,9 +600,15 @@ func (r *Runtime) compileHost(ctx context.Context) (wazero.CompiledModule, error
 		ExportFunction(handler.FuncSetResponseHeader, r.setResponseHeader,
 			handler.FuncSetResponseHeader, "name", "name_len", "value", "value_len").
 		ExportFunction(handler.FuncReadResponseBody, r.readResponseBody,
-			handler.FuncReadResponseBody, "buf", "buf_len").
+			handler.FuncReadResponseBody, "buf", "buf_limit").
 		ExportFunction(handler.FuncWriteResponseBody, r.writeResponseBody,
 			handler.FuncWriteResponseBody, "body", "body_len").
+		ExportFunction(handler.FuncGetResponseTrailerNames, r.getResponseTrailerNames,
+			handler.FuncGetResponseTrailerNames, "buf", "buf_limit").
+		ExportFunction(handler.FuncGetResponseTrailer, r.getResponseTrailer,
+			handler.FuncGetResponseTrailer, "name", "name_len", "buf", "buf_limit").
+		ExportFunction(handler.FuncSetResponseTrailer, r.setResponseTrailer,
+			handler.FuncSetResponseTrailer, "name", "name_len", "value", "value_len").
 		Compile(ctx); err != nil {
 		return nil, fmt.Errorf("wasm: error compiling host: %w", err)
 	} else {

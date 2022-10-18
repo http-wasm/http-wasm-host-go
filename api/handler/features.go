@@ -20,13 +20,34 @@ const (
 
 	// FeatureBufferResponse buffers the HTTP response produced by FuncNext
 	// instead of sending it immediately. This allows the caller to inspect and
-	// overwrite the HTTP status code or response body. As the response is
-	// deferred, may experience timing differences with this enabled.
+	// overwrite the HTTP status code, response body or trailers. As the
+	// response is deferred, expect timing differences when enabled.
 	//
 	// Note: Buffering a response is done on the host and can use resources
 	// such as memory. It also may reduce the features of the underlying
 	// response due to implications of buffering or wrapping.
 	FeatureBufferResponse
+
+	// FeatureTrailers allows guests to act differently depending on if the
+	// host supports HTTP trailing headers (trailers) or not.
+	//
+	// # Handling unsupported
+	//
+	// This is a feature flag because trailers are not well-supported. For
+	// example, mosn does not support trailers.
+	//
+	// A host that doesn't support trailers must do the following:
+	//   - return 0 for this bit in the FuncEnableFeatures result.
+	//   - return no trailer names or values.
+	//   - panic/trap on any call to set a trailer value.
+	//
+	// For example, a logging handler may be fine without trailers, while a
+	// gRPC handler should err as it needs to access the gRPC status trailer. A
+	// guest that requires trailers can fail during initialization instead of
+	// per-request via inspecting the result of FuncEnableFeatures.
+	//
+	// See https://peps.python.org/pep-0444/#request-trailers-and-chunked-transfer-encoding
+	FeatureTrailers
 )
 
 // WithEnabled enables the feature or group of features.
@@ -62,6 +83,8 @@ func featureName(f Features) string {
 		return "buffer-request"
 	case FeatureBufferResponse:
 		return "buffer-response"
+	case FeatureTrailers:
+		return "trailers"
 	}
 	return ""
 }

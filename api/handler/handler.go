@@ -26,7 +26,7 @@ type Middleware[H any] interface {
 // These callbacks are used by the guest function export FuncHandle.
 type Host interface {
 	// EnableFeatures supports the WebAssembly function export EnableFeatures.
-	EnableFeatures(ctx context.Context, features Features)
+	EnableFeatures(ctx context.Context, features Features) Features
 
 	// GetMethod supports the WebAssembly function export FuncGetMethod.
 	GetMethod(ctx context.Context) string
@@ -64,6 +64,18 @@ type Host interface {
 	// FuncWriteRequestBody.
 	RequestBodyWriter(ctx context.Context) io.Writer
 
+	// GetRequestTrailerNames supports the WebAssembly function export
+	// FuncGetRequestTrailerNames.
+	GetRequestTrailerNames(ctx context.Context) []string
+
+	// GetRequestTrailer supports the WebAssembly function export
+	// FuncGetRequestTrailer. This returns false if the value doesn't exist.
+	GetRequestTrailer(ctx context.Context, name string) (string, bool)
+
+	// SetRequestTrailer supports the WebAssembly function export
+	// FuncSetRequestTrailer.
+	SetRequestTrailer(ctx context.Context, name, value string)
+
 	// Next supports the WebAssembly function export FuncNext, which invokes
 	// the next handler.
 	Next(ctx context.Context)
@@ -95,4 +107,16 @@ type Host interface {
 	// ResponseBodyWriter supports the WebAssembly function export
 	// FuncWriteResponseBody.
 	ResponseBodyWriter(ctx context.Context) io.Writer
+
+	// GetResponseTrailerNames supports the WebAssembly function export
+	// FuncGetResponseTrailerNames.
+	GetResponseTrailerNames(ctx context.Context) []string
+
+	// GetResponseTrailer supports the WebAssembly function export
+	// FuncGetResponseTrailer. This returns false if the value doesn't exist.
+	GetResponseTrailer(ctx context.Context, name string) (string, bool)
+
+	// SetResponseTrailer supports the WebAssembly function export
+	// FuncSetResponseTrailer.
+	SetResponseTrailer(ctx context.Context, name, value string)
 }

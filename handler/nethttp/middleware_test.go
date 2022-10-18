@@ -27,7 +27,9 @@ func TestConfig(t *testing.T) {
 		0,
 		handler.FeatureBufferRequest,
 		handler.FeatureBufferResponse,
+		handler.FeatureTrailers,
 		handler.FeatureBufferRequest | handler.FeatureBufferResponse,
+		handler.FeatureBufferRequest | handler.FeatureBufferResponse | handler.FeatureTrailers,
 	}
 
 	for _, tt := range tests {
