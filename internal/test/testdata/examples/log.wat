@@ -2,13 +2,13 @@
 ;; how a handler works and that it is decoupled from other ABI such as WASI.
 ;; Most users will prefer a higher-level language such as C, Rust or TinyGo.
 (module $log
-  ;; get_header writes a header value to memory if it exists and isn't larger
-  ;; than the buffer size limit. The result is `1<<32|value_len` or zero if the
-  ;; header doesn't exist. `value_len` is the actual value length in bytes.
-  (type $get_header (func
+  ;; get_headers writes all header values, NUL-terminated, to memory if the
+  ;; encoded length isn't larger than `buf-limit`. The result is the encoded
+  ;; length in bytes. Ex. "val1\0val2\0" == 10
+  (type $get_headers (func
     (param $name i32) (param $name_len i32)
     (param $buf i32) (param $buf_limit i32)
-    (result (; 0 or 1 << 32| len ;) i64)))
+    (result (; len ;) i32)))
 
   ;; get_header_names writes writes all header names, NUL-terminated, to memory
   ;; if the encoded length isn't larger than `$buf_limit. The result is the
@@ -58,8 +58,8 @@
   (import "http-handler" "get_request_header_names" (func $get_request_header_names
     (type $get_header_names)))
 
-  (import "http-handler" "get_request_header" (func $get_request_header
-    (type $get_header)))
+  (import "http-handler" "get_request_headers" (func $get_request_headers
+    (type $get_headers)))
 
   (import "http-handler" "read_request_body" (func $read_request_body
     (type $read_body)))
@@ -67,8 +67,8 @@
   (import "http-handler" "get_request_trailer_names" (func $get_request_trailer_names
     (type $get_header_names)))
 
-  (import "http-handler" "get_request_trailer" (func $get_request_trailer
-    (type $get_header)))
+  (import "http-handler" "get_request_trailers" (func $get_request_trailers
+    (type $get_headers)))
 
   ;; next dispatches control to the next handler on the host.
   (import "http-handler" "next" (func $next))
@@ -82,8 +82,8 @@
     (type $get_header_names)))
 
   ;; get_response_header requires $feature_buffer_response.
-  (import "http-handler" "get_response_header" (func $get_response_header
-    (type $get_header)))
+  (import "http-handler" "get_response_headers" (func $get_response_headers
+    (type $get_headers)))
 
   ;; read_response_body requires $feature_buffer_response.
   (import "http-handler" "read_response_body" (func $read_response_body
@@ -92,8 +92,8 @@
   (import "http-handler" "get_response_trailer_names" (func $get_response_trailer_names
     (type $get_header_names)))
 
-  (import "http-handler" "get_response_trailer" (func $get_response_trailer
-    (type $get_header)))
+  (import "http-handler" "get_response_trailers" (func $get_response_trailers
+    (type $get_headers)))
 
   ;; http-wasm guests are required to export "memory", so that imported
   ;; functions like "log" can read memory.
@@ -105,15 +105,15 @@
   ;; define a function table for getting a request or response properties.
   (table 10 funcref)
   (elem (i32.const 0) $get_request_header_names)
-  (elem (i32.const 1) $get_request_header)
+  (elem (i32.const 1) $get_request_headers)
   (elem (i32.const 2) $read_request_body)
   (elem (i32.const 3) $get_request_trailer_names)
-  (elem (i32.const 4) $get_request_trailer)
+  (elem (i32.const 4) $get_request_trailers)
   (elem (i32.const 5) $get_response_header_names)
-  (elem (i32.const 6) $get_response_header)
+  (elem (i32.const 6) $get_response_headers)
   (elem (i32.const 7) $read_response_body)
   (elem (i32.const 8) $get_response_trailer_names)
-  (elem (i32.const 9) $get_response_trailer)
+  (elem (i32.const 9) $get_response_trailers)
   (func $log_request_headers (call $log_headers (i32.const 0) (i32.const 1)))
   (func $log_request_body (call $log_body (i32.const 2)))
   (func $log_request_trailers (call $log_headers (i32.const 3) (i32.const 4)))
@@ -228,119 +228,173 @@
     (call $log (i32.const 0) (local.get $pos)))
 
   ;; $log_headers logs all headers in the message.
-  (func $log_headers (param $header_names_fn i32) (param $header_fn i32)
+  (func $log_headers (param $names_fn i32) (param $values_fn i32)
+    ;; buf is the current position in memory, initially zero.
+    (local $buf i32)
+
+    ;; result is the length of all NUL-terminated values.
+    (local $result i32)
+
+    ;; buf_log is where the log function can begin writing.
+    (local $buf_log i32)
+
+    ;; name is the position of the current name.
+    (local $name i32)
+
+    ;; len is the length of the current NUL-terminated name, exclusive of NUL.
     (local $len i32)
 
-    (local $name i32)
-    (local $name_pos i32)
-    (local $name_len i32)
-
-    (local $buf_start i32)
-    (local $buf i32)
-    (local $buf_pos i32)
-    (local $buf_len i32)
-
-    ;; len = table[header_names_fn](0, mem_bytes)
-    (local.set $len
+    ;; result = table[names_fn](0, mem_bytes)
+    (local.set $result
       (call_indirect (type $get_header_names)
-        (i32.const 0)
+        (local.get  $buf)
         (global.get $mem_bytes)
-        (local.get $header_names_fn)))
+        (local.get  $names_fn)))
 
     ;; if there are no headers, return
-    (if (i32.eqz (local.get $len)) (then (return)))
+    (if (i32.eqz (local.get $result)) (then (return)))
 
-    ;; We can start writing memory after the NUL-terminated header names.
-    (local.set $buf_start (local.get $len))
-
-    (loop $headers
-      ;; if mem[name_pos] == NUL
-      (if (i32.eqz (i32.load8_u (local.get $name_pos)))
-        (then ;; reached the end of the field
-
-          ;; reset field start to end of NUL-terminated header names.
-          (local.set $buf (local.get $buf_start))
-
-          ;; name_len := len(field)
-          (local.set $name_len
-            (i32.sub (local.get $name_pos) (local.get $name)))
-
-          ;; copy(mem[buf:], mem[name:name_len])
-          (memory.copy
-            (local.get $buf)
-            (local.get $name)
-            (local.get $name_len))
-
-          ;; buf_pos = buf + name_len
-          (local.set $buf_pos
-            (i32.add (local.get $buf) (local.get $name_len)))
-
-          ;; mem[buf_pos++] = ':'
-          (i32.store8 (local.get $buf_pos) (i32.const (; ':'== ;) 58))
-          (local.set $buf_pos
-            (i32.add (local.get $buf_pos) (i32.const 1)))
-
-          ;; mem[buf_pos++] = ' '
-          (i32.store8 (local.get $buf_pos) (i32.const (; ' '== ;) 32))
-          (local.set $buf_pos
-            (i32.add (local.get $buf_pos) (i32.const 1)))
-
-          ;; buf_len = name_len + 2
-          (local.set $buf_len
-            (i32.add (local.get $name_len) (i32.const 2)))
-
-          ;; buf_len = buf_len +
-          ;;   get_header(mem[name:name_len], mem[buf_pos:], header_fn)
-          (local.set $buf_len
-            (i32.add
-              (local.get $buf_len)
-              (call $get_header
-                (local.get $name)
-                (local.get $name_len)
-                (local.get $buf_pos)
-                (global.get $mem_bytes) ;; buf_limit
-                (local.get $header_fn))))
-
-          (call $log (local.get $buf) (local.get $buf_len))
-
-          (local.set $name_pos (i32.add (local.get $name_pos) (i32.const 1))) ;; name_pos++
-          (local.set $name (local.get $name_pos))) ;; name = name_pos
-         (else
-           (local.set $name_pos (i32.add (local.get $name_pos) (i32.const 1))))) ;; name_pos++
-
-      (local.set $len (i32.sub (local.get $len) (i32.const 1))) ;; $len--
-
-      ;; if $len > 0 { continue } else { break }
-      (br_if $headers (i32.gt_u (local.get $len) (i32.const 0)))))
-
-  ;; get_header reads a header value, using the given function table index.
-  (func $get_header
-    (param $name i32) (param $name_len i32)
-    (param $buf i32) (param $buf_limit i32)
-    (param $header_fn i32)
-    (result (; len ;) i32)
-
-    (local $result i64)
-    (local $len i32)
-
-    ;; result = table[header_fn](mem[name:name_len], mem[buf:buf_limit])
-    (local.set $result (call_indirect (type $get_header)
-      (local.get $name) (local.get $name_len)
-      (local.get $buf) (local.get $buf_limit)
-      (local.get $header_fn)))
-
-    ;; if result == 0 { panic }
-    (if (i64.eqz (local.get $result))
-       (then (unreachable))) ;; header didn't exist
-
-    ;; len = uint32(result)
-    (local.set $len (i32.wrap_i64 (local.get $result)))
-
-    ;; if len > buf_limit { panic }
-    (if (i32.gt_u (local.get $len) (local.get $buf_limit))
+    ;; if result > mem_bytes { panic }
+    (if (i32.gt_u (local.get $result) (global.get $mem_bytes))
        (then (unreachable))) ;; too big so wasn't written
 
-    (local.get $len))
+    ;; buf_log = buf + result
+    (local.set $buf_log (i32.add (local.get $buf) (local.get $result)))
+
+    ;; We can start writing memory after the NUL-terminated header names.
+    (local.set $buf_log (local.get $result))
+
+    ;; loop while we can read a NUL-terminated name.
+    (loop $names
+      ;; if mem[buf] == NUL
+      (if (i32.eqz (i32.load8_u (local.get $buf)))
+        (then ;; reached the end of the name
+
+          ;; name = buf -len
+          (local.set $name (i32.sub (local.get $buf) (local.get $len)))
+
+          ;; log_header_fields(name, buf_log, mem_bytes, values_fn)
+          (call $log_header_fields
+            (local.get  $name) (local.get $len)
+            (local.get  $buf_log)
+            (global.get $mem_bytes) ;; buf_limit
+            (local.get  $values_fn))
+
+          (local.set $buf (i32.add (local.get $buf) (i32.const 1))) ;; buf++
+          (local.set $len (i32.const 0))) ;; len = 0
+        (else
+          (local.set $len (i32.add (local.get $len) (i32.const 1))) ;; len++
+          (local.set $buf (i32.add (local.get $buf) (i32.const 1))))) ;; buf++
+
+      (local.set $result (i32.sub (local.get $result) (i32.const 1))) ;; result--
+
+      ;; if result > 0 { continue } else { break }
+      (br_if $names (i32.gt_u (local.get $result) (i32.const 0)))))
+
+  ;; log_header_fields logs each header field, using the given function table index.
+  (func $log_header_fields
+    (param $name i32) (param  $name_len i32)
+    (param  $buf i32) (param $buf_limit i32)
+    (param   $fn i32)
+
+    ;; result is the length of all NUL-terminated values.
+    (local $result i32)
+
+    ;; buf_log is where the log function can begin writing.
+    (local $buf_log i32)
+
+    ;; value is the position of the current name.
+    (local $value i32)
+
+    ;; len is the length of the current NUL-terminated value, exclusive of NUL.
+    (local $len i32)
+
+    ;; result = table[headers_fn](mem[name:name_len], mem[buf:buf_limit])
+    (local.set $result (call_indirect (type $get_headers)
+      (local.get $name) (local.get $name_len)
+      (local.get $buf)  (local.get $buf_limit)
+      (local.get $fn)))
+
+    ;; if len == 0 { panic }
+    (if (i32.eqz (local.get $result))
+       (then (unreachable))) ;; header didn't exist
+
+    ;; if result > buf_limit { panic }
+    (if (i32.gt_u (local.get $result) (local.get $buf_limit))
+       (then (unreachable))) ;; too big so wasn't written
+
+    ;; buf_log = buf + result
+    (local.set $buf_log (i32.add (local.get $buf) (local.get $result)))
+
+    ;; loop while we can read a NUL-terminated value.
+    (loop $values
+      ;; if mem[buf] == NUL
+      (if (i32.eqz (i32.load8_u (local.get $buf)))
+        (then ;; reached the end of the value
+
+          ;; value = buf - len
+          (local.set $value (i32.sub (local.get $buf) (local.get $len)))
+
+          ;; log_header_field(name, value, buf_log)
+          (call $log_header_field
+            (local.get $name) (local.get $name_len)
+            (local.get $value) (local.get $len)
+            (local.get $buf_log))
+
+          (local.set $buf (i32.add (local.get $buf) (i32.const 1))) ;; buf++
+          (local.set $len (i32.const 0))) ;; len = 0
+        (else
+          (local.set $len (i32.add (local.get $len) (i32.const 1))) ;; len++
+          (local.set $buf (i32.add (local.get $buf) (i32.const 1))))) ;; buf++
+
+      (local.set $result (i32.sub (local.get $result) (i32.const 1))) ;; result--
+
+      ;; if result > 0 { continue } else { break }
+      (br_if $values (i32.gt_u (local.get $result) (i32.const 0)))))
+
+  ;; log_header_field logs a header field formatted like "name: value".
+  ;;
+  ;; Note: This doesn't enforce a buf_limit as the runtime will panic on OOM.
+  (func $log_header_field
+    (param  $name i32) (param  $name_len i32)
+    (param $value i32) (param $value_len i32)
+    (param   $buf i32)
+
+    (local $buf_0 i32)
+
+    ;; buf_0 = buf
+    (local.set $buf_0 (local.get $buf))
+
+    ;; copy(mem[buf:], mem[name:name_len])
+    (memory.copy
+      (local.get $buf)
+      (local.get $name)
+      (local.get $name_len))
+
+    ;; buf = buf + name_len
+    (local.set $buf (i32.add (local.get $buf) (local.get $name_len)))
+
+    ;; mem[buf++] = ':'
+    (i32.store8 (local.get $buf) (i32.const (; ':'== ;) 58))
+    (local.set $buf (i32.add (local.get $buf) (i32.const 1)))
+
+    ;; mem[buf++] = ' '
+    (i32.store8 (local.get $buf) (i32.const (; ' '== ;) 32))
+    (local.set $buf (i32.add (local.get $buf) (i32.const 1)))
+
+    ;; copy(mem[buf:], mem[value:value_len])
+    (memory.copy
+      (local.get $buf)
+      (local.get $value)
+      (local.get $value_len))
+
+    ;; buf = buf + value_len
+    (local.set $buf (i32.add (local.get $buf) (local.get $value_len)))
+
+    ;; log(mem[buf_0:(buf - buf_0)])
+    (call $log
+      (local.get $buf_0)
+      (i32.sub (local.get $buf) (local.get $buf_0))))
 
   ;; log_body logs the body using the given function table index.
   (func $log_body (param $body_fn i32)
@@ -384,7 +438,7 @@
           (i32.gt_u (local.get $status_code) (i32.const 599)))
        (then (unreachable)))
 
-    ;; We will write the 3 digits backwards, from right to left.
+    ;; write the 3 digits backwards, from right to left.
     (local.set $pos (i32.add (local.get $pos) (i32.const 3))) ;; pos += 3
 
     (loop $status_code_ne_zero

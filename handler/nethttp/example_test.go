@@ -124,11 +124,13 @@ func Example_log() {
 			log.Panicf("unexpected request body, want: %q, have: %q", want, have)
 		}
 		w.Header().Set("Content-Type", "application/json")
+		w.Header().Add("Set-Cookie", "a=b") // example of multiple headers
+		w.Header().Add("Set-Cookie", "c=d")
 
 		// Use chunked encoding so we can set a test trailer
 		w.Header().Set("Transfer-Encoding", "chunked")
-		w.Header().Add("Trailer", "grpc-status")
-		w.Header().Add(http.TrailerPrefix+"grpc-status", "1")
+		w.Header().Set("Trailer", "grpc-status")
+		w.Header().Set(http.TrailerPrefix+"grpc-status", "1")
 		w.Write([]byte(responseBody)) // nolint
 	})
 
@@ -167,8 +169,10 @@ func Example_log() {
 	//
 	// HTTP/1.1 200
 	// Content-Type: application/json
-	// Transfer-Encoding: chunked
+	// Set-Cookie: a=b
+	// Set-Cookie: c=d
 	// Trailer: grpc-status
+	// Transfer-Encoding: chunked
 	//
 	// {"hello": "world"}
 	// grpc-status: 1

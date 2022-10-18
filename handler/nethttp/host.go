@@ -111,10 +111,31 @@ func (host) GetRequestHeader(ctx context.Context, name string) (string, bool) {
 	}
 }
 
+// GetRequestHeaders implements the same method as documented on handler.Host.
+func (host) GetRequestHeaders(ctx context.Context, name string) []string {
+	r := requestStateFromContext(ctx).r
+	if textproto.CanonicalMIMEHeaderKey(name) == "Host" { // special-case the host header.
+		return []string{r.Host}
+	}
+	return r.Header.Values(name)
+}
+
 // SetRequestHeader implements the same method as documented on handler.Host.
 func (host) SetRequestHeader(ctx context.Context, name, value string) {
 	s := requestStateFromContext(ctx)
 	s.r.Header.Set(name, value)
+}
+
+// AddRequestHeader implements the same method as documented on handler.Host.
+func (host) AddRequestHeader(ctx context.Context, name, value string) {
+	s := requestStateFromContext(ctx)
+	s.r.Header.Add(name, value)
+}
+
+// RemoveRequestHeader implements the same method as documented on handler.Host.
+func (host) RemoveRequestHeader(ctx context.Context, name string) {
+	s := requestStateFromContext(ctx)
+	s.r.Header.Del(name)
 }
 
 // RequestBodyReader implements the same method as documented on handler.Host.
@@ -143,10 +164,28 @@ func (host) GetRequestTrailer(ctx context.Context, name string) (string, bool) {
 	return getTrailer(header, name)
 }
 
+// GetRequestTrailers implements the same method as documented on handler.Host.
+func (host) GetRequestTrailers(ctx context.Context, name string) []string {
+	header := requestStateFromContext(ctx).w.Header()
+	return getTrailers(header, name)
+}
+
 // SetRequestTrailer implements the same method as documented on handler.Host.
 func (host) SetRequestTrailer(ctx context.Context, name, value string) {
 	header := requestStateFromContext(ctx).w.Header()
 	setTrailer(header, name, value)
+}
+
+// AddRequestTrailer implements the same method as documented on handler.Host.
+func (host) AddRequestTrailer(ctx context.Context, name, value string) {
+	header := requestStateFromContext(ctx).w.Header()
+	addTrailer(header, name, value)
+}
+
+// RemoveRequestTrailer implements the same method as documented on handler.Host.
+func (host) RemoveRequestTrailer(ctx context.Context, name string) {
+	header := requestStateFromContext(ctx).w.Header()
+	removeTrailer(header, name)
 }
 
 // Next implements the same method as documented on handler.Host.
@@ -188,6 +227,8 @@ func (host) GetResponseHeaderNames(ctx context.Context) (names []string) {
 		}
 		names = append(names, n)
 	}
+	// Keys in a Go map don't have consistent ordering.
+	sort.Strings(names)
 	return
 }
 
@@ -201,10 +242,28 @@ func (host) GetResponseHeader(ctx context.Context, name string) (string, bool) {
 	}
 }
 
+// GetResponseHeaders implements the same method as documented on handler.Host.
+func (host) GetResponseHeaders(ctx context.Context, name string) []string {
+	w := requestStateFromContext(ctx).w
+	return w.Header().Values(name)
+}
+
 // SetResponseHeader implements the same method as documented on handler.Host.
 func (host) SetResponseHeader(ctx context.Context, name, value string) {
 	s := requestStateFromContext(ctx)
 	s.w.Header().Set(name, value)
+}
+
+// AddResponseHeader implements the same method as documented on handler.Host.
+func (host) AddResponseHeader(ctx context.Context, name, value string) {
+	s := requestStateFromContext(ctx)
+	s.w.Header().Add(name, value)
+}
+
+// RemoveResponseHeader implements the same method as documented on handler.Host.
+func (host) RemoveResponseHeader(ctx context.Context, name string) {
+	s := requestStateFromContext(ctx)
+	s.w.Header().Del(name)
 }
 
 // ResponseBodyReader implements the same method as documented on handler.Host.
@@ -237,10 +296,28 @@ func (host) GetResponseTrailer(ctx context.Context, name string) (string, bool) 
 	return getTrailer(header, name)
 }
 
+// GetResponseTrailers implements the same method as documented on handler.Host.
+func (host) GetResponseTrailers(ctx context.Context, name string) []string {
+	header := requestStateFromContext(ctx).w.Header()
+	return getTrailers(header, name)
+}
+
 // SetResponseTrailer implements the same method as documented on handler.Host.
 func (host) SetResponseTrailer(ctx context.Context, name, value string) {
 	header := requestStateFromContext(ctx).w.Header()
 	setTrailer(header, name, value)
+}
+
+// AddResponseTrailer implements the same method as documented on handler.Host.
+func (host) AddResponseTrailer(ctx context.Context, name, value string) {
+	header := requestStateFromContext(ctx).w.Header()
+	addTrailer(header, name, value)
+}
+
+// RemoveResponseTrailer implements the same method as documented on handler.Host.
+func (host) RemoveResponseTrailer(ctx context.Context, name string) {
+	header := requestStateFromContext(ctx).w.Header()
+	removeTrailer(header, name)
 }
 
 func trailerNames(header http.Header) (names []string) {
@@ -251,11 +328,17 @@ func trailerNames(header http.Header) (names []string) {
 			names = append(names, n)
 		}
 	}
+	// Keys in a Go map don't have consistent ordering.
+	sort.Strings(names)
 	return
 }
 
+func getTrailers(header http.Header, name string) []string {
+	return header.Values(http.TrailerPrefix + name)
+}
+
 func getTrailer(header http.Header, name string) (string, bool) {
-	if values := header.Values(http.TrailerPrefix + name); len(values) == 0 {
+	if values := getTrailers(header, name); len(values) == 0 {
 		return "", false
 	} else {
 		return values[0], true
@@ -264,4 +347,12 @@ func getTrailer(header http.Header, name string) (string, bool) {
 
 func setTrailer(header http.Header, name string, value string) {
 	header.Set(http.TrailerPrefix+name, value)
+}
+
+func addTrailer(header http.Header, name string, value string) {
+	header.Set(http.TrailerPrefix+name, value)
+}
+
+func removeTrailer(header http.Header, name string) {
+	header.Del(http.TrailerPrefix + name)
 }

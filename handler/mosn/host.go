@@ -57,9 +57,23 @@ func (host) GetRequestHeader(ctx context.Context, name string) (string, bool) {
 	return getHeader(filterFromContext(ctx).reqHeaders, name)
 }
 
+func (host) GetRequestHeaders(ctx context.Context, name string) []string {
+	return getHeaders(filterFromContext(ctx).reqHeaders, name)
+}
+
 func (host) SetRequestHeader(ctx context.Context, name, value string) {
 	f := filterFromContext(ctx)
 	f.reqHeaders = setHeader(f.reqHeaders, name, value)
+}
+
+func (host) AddRequestHeader(ctx context.Context, name, value string) {
+	f := filterFromContext(ctx)
+	f.respHeaders = addHeader(f.respHeaders, name, value)
+}
+
+func (host) RemoveRequestHeader(ctx context.Context, name string) {
+	f := filterFromContext(ctx)
+	f.respHeaders.Del(name)
 }
 
 func (host) RequestBodyReader(ctx context.Context) io.ReadCloser {
@@ -79,6 +93,20 @@ func (host) GetRequestTrailerNames(ctx context.Context) (names []string) {
 
 func (host) GetRequestTrailer(ctx context.Context, name string) (value string, ok bool) {
 	return // no-op because trailers are unsupported: mosn/mosn#2145
+}
+
+func (host) GetRequestTrailers(ctx context.Context, name string) (values []string) {
+	return // no-op because trailers are unsupported: mosn/mosn#2145
+}
+
+func (host) AddRequestTrailer(ctx context.Context, name, value string) {
+	// panic because the user should know that trailers are not supported.
+	panic("trailers unsupported: mosn/mosn#2145")
+}
+
+func (host) RemoveRequestTrailer(ctx context.Context, name string) {
+	// panic because the user should know that trailers are not supported.
+	panic("trailers unsupported: mosn/mosn#2145")
 }
 
 func (host) SetRequestTrailer(ctx context.Context, name, value string) {
@@ -148,9 +176,23 @@ func (host) GetResponseHeader(ctx context.Context, name string) (string, bool) {
 	return getHeader(filterFromContext(ctx).respHeaders, name)
 }
 
+func (host) GetResponseHeaders(ctx context.Context, name string) []string {
+	return getHeaders(filterFromContext(ctx).respHeaders, name)
+}
+
 func (host) SetResponseHeader(ctx context.Context, name, value string) {
 	f := filterFromContext(ctx)
 	f.respHeaders = setHeader(f.respHeaders, name, value)
+}
+
+func (host) AddResponseHeader(ctx context.Context, name, value string) {
+	f := filterFromContext(ctx)
+	f.respHeaders = addHeader(f.respHeaders, name, value)
+}
+
+func (host) RemoveResponseHeader(ctx context.Context, name string) {
+	f := filterFromContext(ctx)
+	f.respHeaders.Del(name)
 }
 
 func (host) ResponseBodyReader(ctx context.Context) io.ReadCloser {
@@ -171,7 +213,21 @@ func (host) GetResponseTrailer(ctx context.Context, name string) (value string, 
 	return // no-op because trailers are unsupported: mosn/mosn#2145
 }
 
+func (host) GetResponseTrailers(ctx context.Context, name string) (values []string) {
+	return // no-op because trailers are unsupported: mosn/mosn#2145
+}
+
 func (host) SetResponseTrailer(ctx context.Context, name, value string) {
+	// panic because the user should know that trailers are not supported.
+	panic("trailers unsupported: mosn/mosn#2145")
+}
+
+func (host) AddResponseTrailer(ctx context.Context, name, value string) {
+	// panic because the user should know that trailers are not supported.
+	panic("trailers unsupported: mosn/mosn#2145")
+}
+
+func (host) RemoveResponseTrailer(ctx context.Context, name string) {
 	// panic because the user should know that trailers are not supported.
 	panic("trailers unsupported: mosn/mosn#2145")
 }
@@ -194,7 +250,18 @@ func getHeaderNames(headers api.HeaderMap) (names []string) {
 	if headers == nil {
 		return
 	}
+
+	// headers.Range can return the same name multiple times, so de-dupe
+	var headerNames map[string]struct{}
+
 	headers.Range(func(key, value string) bool {
+		if headerNames == nil {
+			headerNames = map[string]struct{}{key: {}}
+		} else if _, ok := headerNames[key]; ok {
+			return true // dupe
+		} else {
+			headerNames[key] = struct{}{}
+		}
 		names = append(names, key)
 		return true
 	})
@@ -208,10 +275,31 @@ func getHeader(headers api.HeaderMap, name string) (string, bool) {
 	return headers.Get(name)
 }
 
+func getHeaders(headers api.HeaderMap, name string) (values []string) {
+	if headers == nil {
+		return
+	}
+	headers.Range(func(key, value string) bool {
+		if key == name {
+			values = append(values, value)
+		}
+		return true
+	})
+	return
+}
+
 func setHeader(headers api.HeaderMap, name string, value string) api.HeaderMap {
 	if headers == nil {
 		return header.CommonHeader(map[string]string{name: value})
 	}
 	headers.Set(name, value)
+	return headers
+}
+
+func addHeader(headers api.HeaderMap, name string, value string) api.HeaderMap {
+	if headers == nil {
+		return header.CommonHeader(map[string]string{name: value})
+	}
+	headers.Add(name, value)
 	return headers
 }
