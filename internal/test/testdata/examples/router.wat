@@ -27,7 +27,7 @@
 
   ;; http-wasm guests are required to export "memory", so that imported
   ;; functions like "log" can read memory.
-  (memory (export "memory") 1 (; 1 page==64KB ;))
+  (memory (export "memory") 1 1 (; 1 page==64KB ;))
 
   ;; uri is an arbitrary area to write data.
   (global $uri       i32 (i32.const 1024))

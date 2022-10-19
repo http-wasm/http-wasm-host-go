@@ -8,7 +8,10 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
+
+	"github.com/tetratelabs/wazero"
 
 	httpwasm "github.com/http-wasm/http-wasm-host-go"
 	wasm "github.com/http-wasm/http-wasm-host-go/handler/nethttp"
@@ -66,7 +69,7 @@ func Example_auth() {
 		}
 		req.Header = header
 
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := ts.Client().Do(req)
 		if err != nil {
 			log.Panicln(err)
 		}
@@ -94,20 +97,14 @@ func Example_auth() {
 	// Unauthorized
 }
 
-func Example_log() {
+func Example_wasi() {
 	ctx := context.Background()
-	logger := func(_ context.Context, message string) {
-		// avoid errors due to ephemeral ports
-		if strings.HasPrefix(message, "Host: 127.0.0.1:") {
-			fmt.Println("Host: localhost")
-		} else {
-			fmt.Println(message)
-		}
-	}
+	moduleConfig := wazero.NewModuleConfig().WithStdout(os.Stdout)
 
-	// Configure and compile the WebAssembly guest binary. In this case, it is
-	// a logging interceptor.
-	mw, err := wasm.NewMiddleware(ctx, test.BinExampleLog, httpwasm.Logger(logger))
+	// Configure and compile the WebAssembly guest binary. In this case, it
+	// prints the request and response to the STDOUT via WASI.
+	mw, err := wasm.NewMiddleware(ctx, test.BinExampleWASI,
+		httpwasm.ModuleConfig(moduleConfig))
 	if err != nil {
 		log.Panicln(err)
 	}
@@ -115,14 +112,6 @@ func Example_log() {
 
 	// Create the real request handler.
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// ensure the request body is readable
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			log.Panicln(err)
-		}
-		if want, have := requestBody, string(body); want != have {
-			log.Panicf("unexpected request body, want: %q, have: %q", want, have)
-		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Add("Set-Cookie", "a=b") // example of multiple headers
 		w.Header().Add("Set-Cookie", "c=d")
@@ -131,7 +120,7 @@ func Example_log() {
 		w.Header().Set("Transfer-Encoding", "chunked")
 		w.Header().Set("Trailer", "grpc-status")
 		w.Header().Set(http.TrailerPrefix+"grpc-status", "1")
-		w.Write([]byte(responseBody)) // nolint
+		w.Write([]byte(`{"hello": "world"}`)) // nolint
 	})
 
 	// Wrap this with an interceptor implemented in WebAssembly.
@@ -141,21 +130,18 @@ func Example_log() {
 	ts := httptest.NewServer(wrapped)
 	defer ts.Close()
 
-	// Make a client request and print the contents to the same logger
-	resp, err := ts.Client().Post(ts.URL, "application/json", strings.NewReader(requestBody))
+	// Make a client request which should print to the console
+	req, err := http.NewRequest("POST", ts.URL, strings.NewReader(requestBody))
+	if err != nil {
+		log.Panicln(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Host = "localhost"
+	resp, err := ts.Client().Do(req)
 	if err != nil {
 		log.Panicln(err)
 	}
 	defer resp.Body.Close()
-
-	// Ensure the response body was still readable!
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Panicln(err)
-	}
-	if want, have := responseBody, string(body); want != have {
-		log.Panicf("unexpected response body, want: %q, have: %q", want, have)
-	}
 
 	// Output:
 	// POST / HTTP/1.1
@@ -176,6 +162,41 @@ func Example_log() {
 	//
 	// {"hello": "world"}
 	// grpc-status: 1
+}
+
+func Example_log() {
+	ctx := context.Background()
+	logger := func(_ context.Context, message string) {
+		fmt.Println(message)
+	}
+
+	// Configure and compile the WebAssembly guest binary. In this case, it is
+	// a logging interceptor.
+	mw, err := wasm.NewMiddleware(ctx, test.BinExampleLog, httpwasm.Logger(logger))
+	if err != nil {
+		log.Panicln(err)
+	}
+	defer mw.Close(ctx)
+
+	// Create the real request handler.
+	next := serveJson
+
+	// Wrap this with an interceptor implemented in WebAssembly.
+	wrapped := mw.NewHandler(ctx, next)
+
+	// Start the server with the wrapped handler.
+	ts := httptest.NewServer(wrapped)
+	defer ts.Close()
+
+	// Make a client request.
+	resp, err := ts.Client().Get(ts.URL)
+	if err != nil {
+		log.Panicln(err)
+	}
+	defer resp.Body.Close()
+
+	// Output:
+	// hello world
 }
 
 func Example_router() {

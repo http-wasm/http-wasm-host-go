@@ -104,74 +104,28 @@ func TestAuth(t *testing.T) {
 	}
 }
 
+// TODO: TestConsole requires us to decide how to handle stdout in mosn
+
 func TestLog(t *testing.T) {
-	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// ensure the request body is readable
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			log.Panicln(err)
-		}
-		if want, have := requestBody, string(body); want != have {
-			log.Panicf("unexpected request body, want: %q, have: %q", want, have)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Add("Set-Cookie", "a=b") // example of multiple headers
-		w.Header().Add("Set-Cookie", "c=d")
-		w.Write([]byte(responseBody)) // nolint
-	}))
+	backend := httptest.NewServer(serveJson)
 	defer backend.Close()
 	mosn := startMosn(t, backend.Listener.Addr().String(), filepath.Join("examples", "log.wasm"))
 	defer mosn.Close()
 
-	// Make a client request and print the contents to the same logger
+	// Make a client request.
 	resp, err := http.Post(mosn.url, "application/json", strings.NewReader(requestBody))
 	if err != nil {
 		log.Panicln(err)
 	}
 	defer resp.Body.Close()
 
-	// Ensure the response body was still readable!
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Panicln(err)
-	}
-	if want, have := responseBody, string(body); want != have {
-		log.Panicf("unexpected response body, want: %q, have: %q", want, have)
-	}
-
 	out, err := os.ReadFile(mosn.logPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{
-		`wasm: POST / HTTP/1.1`,
-		`wasm: Host: 127.0.0.1:`,
-		`wasm: Content-Length: 18`,
-		`wasm: Content-Type: application/json`,
-		`wasm: User-Agent: Go-http-client/1.1`,
-		`wasm: Accept-Encoding: gzip`,
-		`wasm: `,
-		`wasm: {"hello": "panda"}`,
-		`wasm: `,
-		`wasm: HTTP/1.1 200`,
-		`wasm: Content-Length: 18`,
-		`wasm: Content-Type: application/json`,
-		`wasm: Set-Cookie: a=b`,
-		`wasm: Set-Cookie: c=d`,
-		`wasm: Date: `,
-		`wasm: `,
-		`wasm: {"hello": "world"}`,
-	}
 
-	var missing []string
-	for _, w := range want {
-		if !strings.Contains(string(out), w) {
-			missing = append(missing, w)
-		}
-	}
-
-	if len(missing) > 0 {
-		t.Errorf("have %s, missing: %s", out, missing)
+	if want, have := `wasm: hello`, string(out); !strings.Contains(have, want) {
+		log.Panicf("unexpected log, want: %q, have: %q", want, have)
 	}
 }
 
