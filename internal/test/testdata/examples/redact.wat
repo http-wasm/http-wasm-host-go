@@ -45,7 +45,7 @@
 
   ;; http-wasm guests are required to export "memory", so that imported
   ;; functions like $read_response_body can read memory.
-  (memory (export "memory") 1 (; 1 page==64KB ;))
+  (memory (export "memory") 1 1 (; 1 page==64KB ;))
 
   ;; define a function table for getting a request or response body.
   (table 8 funcref)
