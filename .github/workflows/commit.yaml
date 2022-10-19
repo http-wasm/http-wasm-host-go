@@ -45,6 +45,8 @@ jobs:
             ~/go/bin
           key: check-${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum', 'Makefile') }}
 
+      - run: make testdata
+
       - run: make check
 
   test:
@@ -72,4 +74,4 @@ jobs:
           curl -sSL ${wabt_url} | tar --strip-components 2 -C /usr/local/bin -xzf - wabt-${wabt_version}/bin/wat2wasm
 
       - name: "Test"
-        run: make build.testdata test
+        run: make test
