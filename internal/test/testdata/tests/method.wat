@@ -7,9 +7,8 @@
   (import "http-handler" "set_method" (func $set_method
     (param $method i32) (param $method_len i32)))
 
-  (import "http-handler" "set_request_body" (func $set_request_body
-    (param $body i32)
-    (param $body_len i32)))
+  (import "http-handler" "write_request_body" (func $write_request_body
+    (param $buf i32) (param $buf_len i32)))
 
   (import "http-handler" "next" (func $next))
 
@@ -34,5 +33,5 @@
     (call $set_method (global.get $post) (global.get $post_len))
 
     ;; write the method to the request body.
-    (call $set_request_body (global.get $buf) (local.get $len)))
+    (call $write_request_body (global.get $buf) (local.get $len)))
 )

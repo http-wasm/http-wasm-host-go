@@ -97,11 +97,29 @@ const (
 	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#get-request-header
 	FuncGetRequestHeader = "get_request_header"
 
+	// FuncGetRequestHeaders writes all header values, NUL-terminated, to
+	// memory if the encoded length isn't larger than `buf-limit`. The result
+	// is the encoded length in bytes. Ex. "val1\0val2\0" == 10
+	//
+	// TODO: document on http-wasm-abi
+	FuncGetRequestHeaders = "get_request_headers"
+
 	// FuncSetRequestHeader overwrites a request header with a given name to
 	// a value read from memory.
 	//
 	// TODO: document on http-wasm-abi
 	FuncSetRequestHeader = "set_request_header"
+
+	// FuncAddRequestHeader adds a request header with a given name using a
+	// value read from memory.
+	//
+	// TODO: document on http-wasm-abi
+	FuncAddRequestHeader = "add_request_header"
+
+	// FuncRemoveRequestHeader removes any values for the given header name.
+	//
+	// TODO: document on http-wasm-abi
+	FuncRemoveRequestHeader = "remove_request_header"
 
 	// FuncReadRequestBody reads up to `buf_limit` bytes remaining in the body
 	// into memory at offset `buf`. A zero `buf_limit` will panic. The result
@@ -143,18 +161,43 @@ const (
 	// TODO: document on http-wasm-abi
 	FuncGetRequestTrailerNames = "get_request_trailer_names"
 
-	// FuncGetRequestTrailer writes a trailer value to memory if it exists and
-	// isn't larger than `buf-limit`. The result is `1<<32|len`, where `len` is
-	// the bytes written, or zero if the trailer doesn't exist.
+	// FuncGetRequestTrailer writes a trailing header (trailer) value to memory
+	// if it exists and isn't larger than `buf-limit`. The result is
+	// `1<<32|len`, where `len` is the bytes written, or zero if the trailer
+	// doesn't exist.
 	//
 	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#get-request-trailer
 	FuncGetRequestTrailer = "get_request_trailer"
+
+	// FuncGetRequestTrailers writes all trailing header (trailer) values,
+	// NUL-terminated, to memory if the encoded length isn't larger than
+	// `buf-limit`. The result is the encoded length in bytes.
+	// Ex. "val1\0val2\0" == 10
+	//
+	// Note: `len` is the encoded length: "val\0" == 4 or "val1\0val2\0" == 10
+	//
+	// TODO: document on http-wasm-abi
+	FuncGetRequestTrailers = "get_request_trailers"
 
 	// FuncSetRequestTrailer overwrites a request trailer with a given name to
 	// a value read from memory.
 	//
 	// TODO: document on http-wasm-abi
 	FuncSetRequestTrailer = "set_request_trailer"
+
+	// FuncAddRequestTrailer adds a trailing header (trailer) with a given name
+	// using a value read from memory.
+	//
+	// TODO: document on http-wasm-abi
+	FuncAddRequestTrailer = "add_request_trailer"
+
+	// FuncRemoveRequestTrailer removes any values for the given trailer name.
+	//
+	// To use this function after FuncNext, set FeatureBufferRequest via
+	// FuncEnableFeatures. Otherwise, this can be called when FuncNext wasn't.
+	//
+	// TODO: document on http-wasm-abi
+	FuncRemoveRequestTrailer = "remove_request_trailer"
 
 	// FuncNext calls a downstream handler and blocks until it is finished
 	// processing.
@@ -203,6 +246,18 @@ const (
 	// TODO: document on http-wasm-abi
 	FuncGetResponseHeader = "get_response_header"
 
+	// FuncGetResponseHeaders writes all header values, NUL-terminated, to
+	// memory if the encoded length isn't larger than `buf-limit`. The result
+	// is the encoded length in bytes. Ex. "val1\0val2\0" == 10
+	//
+	// To enable FeatureBufferResponse, FuncEnableFeatures prior to FuncNext.
+	// Doing otherwise, or calling before FuncNext will panic.
+	//
+	// Note: `len` is the encoded length: "val\0" == 4 or "val1\0val2\0" == 10
+	//
+	// TODO: document on http-wasm-abi
+	FuncGetResponseHeaders = "get_response_headers"
+
 	// FuncSetResponseHeader overwrites a response header with a given name to
 	// a value read from memory.
 	//
@@ -211,6 +266,23 @@ const (
 	//
 	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#set-response-header
 	FuncSetResponseHeader = "set_response_header"
+
+	// FuncAddResponseHeader adds a response header with a given name using a
+	// value read from memory.
+	//
+	// To use this function after FuncNext, set FeatureBufferResponse via
+	// FuncEnableFeatures. Otherwise, this can be called when FuncNext wasn't.
+	//
+	// TODO: document on http-wasm-abi
+	FuncAddResponseHeader = "add_response_header"
+
+	// FuncRemoveResponseHeader removes any values for the given header name.
+	//
+	// To use this function after FuncNext, set FeatureBufferResponse via
+	// FuncEnableFeatures. Otherwise, this can be called when FuncNext wasn't.
+	//
+	// TODO: document on http-wasm-abi
+	FuncRemoveResponseHeader = "remove_response_header"
 
 	// FuncReadResponseBody reads up to `buf_limit` bytes remaining in the body
 	// into memory at offset `buf`. A zero `buf_limit` will panic. The result
@@ -252,10 +324,10 @@ const (
 	// TODO: document on http-wasm-abi
 	FuncGetResponseTrailerNames = "get_response_trailer_names"
 
-	// FuncGetResponseTrailer writes a trailer value to memory if it exists and
-	// isn't larger than `buf-limit`. The result is `1<<32|len`, where `len` is
-	// the bytes written, or zero if the trailer doesn't exist. This requires
-	// FeatureBufferResponse.
+	// FuncGetResponseTrailer writes a trailing header (trailer) value to
+	// memory if it exists and isn't larger than `buf-limit`. The result is
+	// `1<<32|len`, where `len` is the bytes written, or zero if the trailer
+	// doesn't exist. This requires FeatureBufferResponse.
 	//
 	// To enable FeatureBufferResponse, FuncEnableFeatures prior to FuncNext.
 	// Doing otherwise, or calling before FuncNext will panic.
@@ -263,12 +335,42 @@ const (
 	// TODO: document on http-wasm-abi
 	FuncGetResponseTrailer = "get_response_trailer"
 
-	// FuncSetResponseTrailer overwrites a response trailer with a given name to
-	// a value read from memory.
+	// FuncGetResponseTrailers writes all trailing header (trailer) values,
+	// NUL-terminated, to memory if the encoded length isn't larger than
+	// `buf-limit`. The result is the encoded length in bytes.
+	// Ex. "val1\0val2\0" == 10
+	//
+	// To enable FeatureBufferResponse, FuncEnableFeatures prior to FuncNext.
+	// Doing otherwise, or calling before FuncNext will panic.
+	//
+	// Note: `len` is the encoded length: "val\0" == 4 or "val1\0val2\0" == 10
+	//
+	// TODO: document on http-wasm-abi
+	FuncGetResponseTrailers = "get_response_trailers"
+
+	// FuncSetResponseTrailer overwrites a trailing header (trailer) with a
+	// given name to a value read from memory.
+	//
+	// Note: To use this function after FuncNext, set FeatureBufferResponse via
+	// FuncEnableFeatures. Otherwise, this can be called when FuncNext wasn't.
+	//
+	// TODO: document on http-wasm-abi
+	FuncSetResponseTrailer = "set_response_trailer"
+
+	// FuncAddResponseTrailer adds a trailing header (trailer) with a given
+	// name using a value read from memory.
+	//
+	// Note: To use this function after FuncNext, set FeatureBufferResponse via
+	// FuncEnableFeatures. Otherwise, this can be called when FuncNext wasn't.
+	//
+	// TODO: document on http-wasm-abi
+	FuncAddResponseTrailer = "add_response_trailer"
+
+	// FuncRemoveResponseTrailer removes any values for the given trailer name.
 	//
 	// To use this function after FuncNext, set FeatureBufferResponse via
 	// FuncEnableFeatures. Otherwise, this can be called when FuncNext wasn't.
 	//
-	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#set-response-trailer
-	FuncSetResponseTrailer = "set_response_trailer"
+	// TODO: document on http-wasm-abi
+	FuncRemoveResponseTrailer = "remove_response_trailer"
 )

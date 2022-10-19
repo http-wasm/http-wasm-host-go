@@ -279,8 +279,20 @@ func (r *middleware) getRequestHeader(ctx context.Context, mod wazeroapi.Module,
 	return
 }
 
+// getRequestHeaders implements the WebAssembly host function
+// handler.FuncGetRequestHeaders.
+func (r *middleware) getRequestHeaders(ctx context.Context, mod wazeroapi.Module,
+	name, nameLen, buf, bufLimit uint32) (len uint32) {
+	if nameLen == 0 {
+		panic("HTTP header name cannot be empty")
+	}
+	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
+	values := r.host.GetRequestHeaders(ctx, n)
+	return writeNULTerminated(ctx, mod.Memory(), buf, bufLimit, values)
+}
+
 // setRequestHeader implements the WebAssembly host function
-// handler.FuncRequestHeader.
+// handler.FuncSetRequestHeader.
 func (r *middleware) setRequestHeader(ctx context.Context, mod wazeroapi.Module,
 	name, nameLen, value, valueLen uint32) {
 	_ = mustBeforeNext(ctx, "set request header")
@@ -291,6 +303,33 @@ func (r *middleware) setRequestHeader(ctx context.Context, mod wazeroapi.Module,
 	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
 	v := mustReadString(ctx, mod.Memory(), "value", value, valueLen)
 	r.host.SetRequestHeader(ctx, n, v)
+}
+
+// addRequestHeader implements the WebAssembly host function
+// handler.FuncAddRequestHeader.
+func (r *middleware) addRequestHeader(ctx context.Context, mod wazeroapi.Module,
+	name, nameLen, value, valueLen uint32) {
+	_ = mustBeforeNext(ctx, "add request header")
+
+	if nameLen == 0 {
+		panic("HTTP header name cannot be empty")
+	}
+	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
+	v := mustReadString(ctx, mod.Memory(), "value", value, valueLen)
+	r.host.AddRequestHeader(ctx, n, v)
+}
+
+// removeRequestHeader implements the WebAssembly host function
+// handler.FuncRemoveRequestHeader.
+func (r *middleware) removeRequestHeader(ctx context.Context, mod wazeroapi.Module,
+	name, nameLen uint32) {
+	_ = mustBeforeNext(ctx, "remove request header")
+
+	if nameLen == 0 {
+		panic("HTTP header name cannot be empty")
+	}
+	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
+	r.host.RemoveRequestHeader(ctx, n)
 }
 
 // readRequestBody implements the WebAssembly host function
@@ -360,8 +399,20 @@ func (r *middleware) getRequestTrailer(ctx context.Context, mod wazeroapi.Module
 	return
 }
 
+// getRequestTrailers implements the WebAssembly host function
+// handler.FuncGetRequestTrailers.
+func (r *middleware) getRequestTrailers(ctx context.Context, mod wazeroapi.Module,
+	name, nameLen, buf, bufLimit uint32) (len uint32) {
+	if nameLen == 0 {
+		panic("HTTP trailer name cannot be empty")
+	}
+	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
+	values := r.host.GetRequestTrailers(ctx, n)
+	return writeNULTerminated(ctx, mod.Memory(), buf, bufLimit, values)
+}
+
 // setRequestTrailer implements the WebAssembly host function
-// handler.FuncRequestTrailer.
+// handler.FuncSetRequestTrailer.
 func (r *middleware) setRequestTrailer(ctx context.Context, mod wazeroapi.Module,
 	name, nameLen, value, valueLen uint32) {
 	_ = mustBeforeNext(ctx, "set request trailer")
@@ -372,6 +423,33 @@ func (r *middleware) setRequestTrailer(ctx context.Context, mod wazeroapi.Module
 	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
 	v := mustReadString(ctx, mod.Memory(), "value", value, valueLen)
 	r.host.SetRequestTrailer(ctx, n, v)
+}
+
+// addRequestTrailer implements the WebAssembly host function
+// handler.FuncAddRequestTrailer.
+func (r *middleware) addRequestTrailer(ctx context.Context, mod wazeroapi.Module,
+	name, nameLen, value, valueLen uint32) {
+	_ = mustBeforeNext(ctx, "add request trailer")
+
+	if nameLen == 0 {
+		panic("HTTP trailer name cannot be empty")
+	}
+	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
+	v := mustReadString(ctx, mod.Memory(), "value", value, valueLen)
+	r.host.AddRequestTrailer(ctx, n, v)
+}
+
+// removeRequestTrailer implements the WebAssembly host function
+// handler.FuncRemoveRequestTrailer.
+func (r *middleware) removeRequestTrailer(ctx context.Context, mod wazeroapi.Module,
+	name, nameLen uint32) {
+	_ = mustBeforeNext(ctx, "remove request trailer")
+
+	if nameLen == 0 {
+		panic("HTTP trailer name cannot be empty")
+	}
+	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
+	r.host.RemoveRequestTrailer(ctx, n)
 }
 
 // getStatusCode implements the WebAssembly host function
@@ -404,7 +482,7 @@ func (r *middleware) getResponseHeaderNames(ctx context.Context, mod wazeroapi.M
 // handler.FuncGetResponseHeader.
 func (r *middleware) getResponseHeader(ctx context.Context, mod wazeroapi.Module,
 	name, nameLen, buf, bufLimit uint32) (okLen uint64) {
-	_ = mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "get response header")
+	_ = mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "get response headers")
 
 	if nameLen == 0 {
 		panic("HTTP header name cannot be empty")
@@ -418,8 +496,22 @@ func (r *middleware) getResponseHeader(ctx context.Context, mod wazeroapi.Module
 	return
 }
 
+// getResponseHeaders implements the WebAssembly host function
+// handler.FuncGetResponseHeaders.
+func (r *middleware) getResponseHeaders(ctx context.Context, mod wazeroapi.Module,
+	name, nameLen, buf, bufLimit uint32) (len uint32) {
+	_ = mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "get response header")
+
+	if nameLen == 0 {
+		panic("HTTP header name cannot be empty")
+	}
+	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
+	values := r.host.GetResponseHeaders(ctx, n)
+	return writeNULTerminated(ctx, mod.Memory(), buf, bufLimit, values)
+}
+
 // setResponseHeader implements the WebAssembly host function
-// handler.FuncRequestHeader.
+// handler.FuncSetRequestHeader.
 func (r *middleware) setResponseHeader(ctx context.Context, mod wazeroapi.Module,
 	name, nameLen, value, valueLen uint32) {
 	_ = mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "set response header")
@@ -430,6 +522,33 @@ func (r *middleware) setResponseHeader(ctx context.Context, mod wazeroapi.Module
 	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
 	v := mustReadString(ctx, mod.Memory(), "value", value, valueLen)
 	r.host.SetResponseHeader(ctx, n, v)
+}
+
+// addResponseHeader implements the WebAssembly host function
+// handler.FuncAddResponseHeader.
+func (r *middleware) addResponseHeader(ctx context.Context, mod wazeroapi.Module,
+	name, nameLen, value, valueLen uint32) {
+	_ = mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "add response header")
+
+	if nameLen == 0 {
+		panic("HTTP header name cannot be empty")
+	}
+	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
+	v := mustReadString(ctx, mod.Memory(), "value", value, valueLen)
+	r.host.AddResponseHeader(ctx, n, v)
+}
+
+// removeResponseHeader implements the WebAssembly host function
+// handler.FuncRemoveResponseHeader.
+func (r *middleware) removeResponseHeader(ctx context.Context, mod wazeroapi.Module,
+	name, nameLen uint32) {
+	_ = mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "remove response header")
+
+	if nameLen == 0 {
+		panic("HTTP header name cannot be empty")
+	}
+	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
+	r.host.RemoveResponseHeader(ctx, n)
 }
 
 // readResponseBody implements the WebAssembly host function
@@ -520,8 +639,22 @@ func (r *middleware) getResponseTrailer(ctx context.Context, mod wazeroapi.Modul
 	return
 }
 
+// getResponseTrailers implements the WebAssembly host function
+// handler.FuncGetResponseTrailers.
+func (r *middleware) getResponseTrailers(ctx context.Context, mod wazeroapi.Module,
+	name, nameLen, buf, bufLimit uint32) (len uint32) {
+	_ = mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "get response trailers")
+
+	if nameLen == 0 {
+		panic("HTTP trailer name cannot be empty")
+	}
+	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
+	values := r.host.GetResponseTrailers(ctx, n)
+	return writeNULTerminated(ctx, mod.Memory(), buf, bufLimit, values)
+}
+
 // setResponseTrailer implements the WebAssembly host function
-// handler.FuncRequestTrailer.
+// handler.FuncSetRequestTrailer.
 func (r *middleware) setResponseTrailer(ctx context.Context, mod wazeroapi.Module,
 	name, nameLen, value, valueLen uint32) {
 	_ = mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "set response trailer")
@@ -532,6 +665,33 @@ func (r *middleware) setResponseTrailer(ctx context.Context, mod wazeroapi.Modul
 	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
 	v := mustReadString(ctx, mod.Memory(), "value", value, valueLen)
 	r.host.SetResponseTrailer(ctx, n, v)
+}
+
+// addResponseTrailer implements the WebAssembly host function
+// handler.FuncAddResponseTrailer.
+func (r *middleware) addResponseTrailer(ctx context.Context, mod wazeroapi.Module,
+	name, nameLen, value, valueLen uint32) {
+	_ = mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "add response trailer")
+
+	if nameLen == 0 {
+		panic("HTTP trailer name cannot be empty")
+	}
+	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
+	v := mustReadString(ctx, mod.Memory(), "value", value, valueLen)
+	r.host.AddResponseTrailer(ctx, n, v)
+}
+
+// removeResponseTrailer implements the WebAssembly host function
+// handler.FuncRemoveResponseTrailer.
+func (r *middleware) removeResponseTrailer(ctx context.Context, mod wazeroapi.Module,
+	name, nameLen uint32) {
+	_ = mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "remove response trailer")
+
+	if nameLen == 0 {
+		panic("HTTP trailer name cannot be empty")
+	}
+	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
+	r.host.RemoveResponseTrailer(ctx, n)
 }
 
 func mustBeforeNext(ctx context.Context, op string) (s *requestState) {
@@ -575,8 +735,14 @@ func (r *middleware) compileHost(ctx context.Context) (wazero.CompiledModule, er
 			handler.FuncGetRequestHeaderNames, "buf", "buf_limit").
 		ExportFunction(handler.FuncGetRequestHeader, r.getRequestHeader,
 			handler.FuncGetRequestHeader, "name", "name_len", "buf", "buf_limit").
+		ExportFunction(handler.FuncGetRequestHeaders, r.getRequestHeaders,
+			handler.FuncGetRequestHeaders, "name", "name_len", "buf", "buf_limit").
 		ExportFunction(handler.FuncSetRequestHeader, r.setRequestHeader,
 			handler.FuncSetRequestHeader, "name", "name_len", "value", "value_len").
+		ExportFunction(handler.FuncAddRequestHeader, r.addRequestHeader,
+			handler.FuncAddRequestHeader, "name", "name_len", "value", "value_len").
+		ExportFunction(handler.FuncRemoveRequestHeader, r.removeRequestHeader,
+			handler.FuncRemoveRequestHeader, "name", "name_len").
 		ExportFunction(handler.FuncReadRequestBody, r.readRequestBody,
 			handler.FuncReadRequestBody, "buf", "buf_limit").
 		ExportFunction(handler.FuncWriteRequestBody, r.writeRequestBody,
@@ -585,8 +751,14 @@ func (r *middleware) compileHost(ctx context.Context) (wazero.CompiledModule, er
 			handler.FuncGetRequestTrailerNames, "buf", "buf_limit").
 		ExportFunction(handler.FuncGetRequestTrailer, r.getRequestTrailer,
 			handler.FuncGetRequestTrailer, "name", "name_len", "buf", "buf_limit").
+		ExportFunction(handler.FuncGetRequestTrailers, r.getRequestTrailers,
+			handler.FuncGetRequestTrailers, "name", "name_len", "buf", "buf_limit").
 		ExportFunction(handler.FuncSetRequestTrailer, r.setRequestTrailer,
 			handler.FuncSetRequestTrailer, "name", "name_len", "value", "value_len").
+		ExportFunction(handler.FuncAddRequestTrailer, r.addRequestTrailer,
+			handler.FuncAddRequestTrailer, "name", "name_len", "value", "value_len").
+		ExportFunction(handler.FuncRemoveRequestTrailer, r.removeRequestTrailer,
+			handler.FuncRemoveRequestTrailer, "name", "name_len").
 		ExportFunction(handler.FuncNext, r.next,
 			handler.FuncNext).
 		ExportFunction(handler.FuncGetStatusCode, r.getStatusCode,
@@ -597,8 +769,14 @@ func (r *middleware) compileHost(ctx context.Context) (wazero.CompiledModule, er
 			handler.FuncGetResponseHeaderNames, "buf", "buf_limit").
 		ExportFunction(handler.FuncGetResponseHeader, r.getResponseHeader,
 			handler.FuncGetResponseHeader, "name", "name_len", "buf", "buf_limit").
+		ExportFunction(handler.FuncGetResponseHeaders, r.getResponseHeaders,
+			handler.FuncGetResponseHeaders, "name", "name_len", "buf", "buf_limit").
 		ExportFunction(handler.FuncSetResponseHeader, r.setResponseHeader,
 			handler.FuncSetResponseHeader, "name", "name_len", "value", "value_len").
+		ExportFunction(handler.FuncAddResponseHeader, r.addResponseHeader,
+			handler.FuncAddResponseHeader, "name", "name_len", "value", "value_len").
+		ExportFunction(handler.FuncRemoveResponseHeader, r.removeResponseHeader,
+			handler.FuncRemoveResponseHeader, "name", "name_len").
 		ExportFunction(handler.FuncReadResponseBody, r.readResponseBody,
 			handler.FuncReadResponseBody, "buf", "buf_limit").
 		ExportFunction(handler.FuncWriteResponseBody, r.writeResponseBody,
@@ -607,8 +785,14 @@ func (r *middleware) compileHost(ctx context.Context) (wazero.CompiledModule, er
 			handler.FuncGetResponseTrailerNames, "buf", "buf_limit").
 		ExportFunction(handler.FuncGetResponseTrailer, r.getResponseTrailer,
 			handler.FuncGetResponseTrailer, "name", "name_len", "buf", "buf_limit").
+		ExportFunction(handler.FuncGetResponseTrailers, r.getResponseTrailers,
+			handler.FuncGetResponseTrailers, "name", "name_len", "buf", "buf_limit").
 		ExportFunction(handler.FuncSetResponseTrailer, r.setResponseTrailer,
 			handler.FuncSetResponseTrailer, "name", "name_len", "value", "value_len").
+		ExportFunction(handler.FuncAddResponseTrailer, r.addResponseTrailer,
+			handler.FuncAddResponseTrailer, "name", "name_len", "value", "value_len").
+		ExportFunction(handler.FuncRemoveResponseTrailer, r.removeResponseTrailer,
+			handler.FuncRemoveResponseTrailer, "name", "name_len").
 		Compile(ctx); err != nil {
 		return nil, fmt.Errorf("wasm: error compiling host: %w", err)
 	} else {

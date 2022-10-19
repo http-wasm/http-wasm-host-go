@@ -52,9 +52,21 @@ type Host interface {
 	// FuncGetRequestHeader. This returns false if the value doesn't exist.
 	GetRequestHeader(ctx context.Context, name string) (string, bool)
 
+	// GetRequestHeaders supports the WebAssembly function export
+	// FuncGetRequestHeaders. This returns nil if a value doesn't exist.
+	GetRequestHeaders(ctx context.Context, name string) []string
+
 	// SetRequestHeader supports the WebAssembly function export
 	// FuncSetRequestHeader.
 	SetRequestHeader(ctx context.Context, name, value string)
+
+	// AddRequestHeader supports the WebAssembly function export
+	// FuncAddRequestHeader.
+	AddRequestHeader(ctx context.Context, name, value string)
+
+	// RemoveRequestHeader supports the WebAssembly function export
+	// FuncRemoveRequestHeader.
+	RemoveRequestHeader(ctx context.Context, name string)
 
 	// RequestBodyReader supports the WebAssembly function export
 	// FuncReadRequestBody.
@@ -72,9 +84,21 @@ type Host interface {
 	// FuncGetRequestTrailer. This returns false if the value doesn't exist.
 	GetRequestTrailer(ctx context.Context, name string) (string, bool)
 
+	// GetRequestTrailers supports the WebAssembly function export
+	// FuncGetRequestTrailers. This returns nil if a value doesn't exist.
+	GetRequestTrailers(ctx context.Context, name string) []string
+
 	// SetRequestTrailer supports the WebAssembly function export
 	// FuncSetRequestTrailer.
 	SetRequestTrailer(ctx context.Context, name, value string)
+
+	// AddRequestTrailer supports the WebAssembly function export
+	// FuncAddRequestTrailer.
+	AddRequestTrailer(ctx context.Context, name, value string)
+
+	// RemoveRequestTrailer supports the WebAssembly function export
+	// FuncRemoveRequestTrailer.
+	RemoveRequestTrailer(ctx context.Context, name string)
 
 	// Next supports the WebAssembly function export FuncNext, which invokes
 	// the next handler.
@@ -96,9 +120,21 @@ type Host interface {
 	// FuncGetResponseHeader. This returns false if the value doesn't exist.
 	GetResponseHeader(ctx context.Context, name string) (string, bool)
 
+	// GetResponseHeaders supports the WebAssembly function export
+	// FuncGetResponseHeaders. This returns nil if a value doesn't exist.
+	GetResponseHeaders(ctx context.Context, name string) []string
+
 	// SetResponseHeader supports the WebAssembly function export
 	// FuncSetResponseHeader.
 	SetResponseHeader(ctx context.Context, name, value string)
+
+	// AddResponseHeader supports the WebAssembly function export
+	// FuncAddResponseHeader.
+	AddResponseHeader(ctx context.Context, name, value string)
+
+	// RemoveResponseHeader supports the WebAssembly function export
+	// FuncRemoveResponseHeader.
+	RemoveResponseHeader(ctx context.Context, name string)
 
 	// ResponseBodyReader supports the WebAssembly function export
 	// FuncReadResponseBody.
@@ -116,7 +152,19 @@ type Host interface {
 	// FuncGetResponseTrailer. This returns false if the value doesn't exist.
 	GetResponseTrailer(ctx context.Context, name string) (string, bool)
 
+	// GetResponseTrailers supports the WebAssembly function export
+	// FuncGetResponseTrailers. This returns nil if a value doesn't exist.
+	GetResponseTrailers(ctx context.Context, name string) []string
+
 	// SetResponseTrailer supports the WebAssembly function export
 	// FuncSetResponseTrailer.
 	SetResponseTrailer(ctx context.Context, name, value string)
+
+	// AddResponseTrailer supports the WebAssembly function export
+	// FuncAddResponseTrailer.
+	AddResponseTrailer(ctx context.Context, name, value string)
+
+	// RemoveResponseTrailer supports the WebAssembly function export
+	// FuncRemoveResponseTrailer.
+	RemoveResponseTrailer(ctx context.Context, name string)
 }

@@ -105,7 +105,20 @@ func TestAuth(t *testing.T) {
 }
 
 func TestLog(t *testing.T) {
-	backend := httptest.NewServer(serveJson)
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// ensure the request body is readable
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			log.Panicln(err)
+		}
+		if want, have := requestBody, string(body); want != have {
+			log.Panicf("unexpected request body, want: %q, have: %q", want, have)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Add("Set-Cookie", "a=b") // example of multiple headers
+		w.Header().Add("Set-Cookie", "c=d")
+		w.Write([]byte(responseBody)) // nolint
+	}))
 	defer backend.Close()
 	mosn := startMosn(t, backend.Listener.Addr().String(), filepath.Join("examples", "log.wasm"))
 	defer mosn.Close()
@@ -132,17 +145,20 @@ func TestLog(t *testing.T) {
 	}
 	want := []string{
 		`wasm: POST / HTTP/1.1`,
-		`Host: 127.0.0.1:`,
+		`wasm: Host: 127.0.0.1:`,
 		`wasm: Content-Length: 18`,
-		`Content-Type: application/json`,
-		`User-Agent: Go-http-client/1.1`,
-		`Accept-Encoding: gzip`,
+		`wasm: Content-Type: application/json`,
+		`wasm: User-Agent: Go-http-client/1.1`,
+		`wasm: Accept-Encoding: gzip`,
 		`wasm: `,
 		`wasm: {"hello": "panda"}`,
+		`wasm: `,
 		`wasm: HTTP/1.1 200`,
-		`Content-Length: 18`,
-		`Content-Type: text/plain; charset=utf-8`,
-		`Date: `,
+		`wasm: Content-Length: 18`,
+		`wasm: Content-Type: application/json`,
+		`wasm: Set-Cookie: a=b`,
+		`wasm: Set-Cookie: c=d`,
+		`wasm: Date: `,
 		`wasm: `,
 		`wasm: {"hello": "world"}`,
 	}

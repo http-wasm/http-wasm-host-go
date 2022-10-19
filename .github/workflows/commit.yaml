@@ -21,7 +21,6 @@ on:
 
 jobs:
   check:
-    name: Pre-commit check, Go-${{ matrix.go-version }}
     runs-on: ubuntu-20.04
     strategy:
       matrix:
@@ -45,6 +44,14 @@ jobs:
             ~/go/bin
           key: check-${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum', 'Makefile') }}
 
+      - name: "Set up wat2wasm"
+        run: |  # Needed for testdata. wabt includes wat2wasm.
+          wabt_version=1.0.30
+          wabt_url=https://github.com/WebAssembly/wabt/releases/download/${wabt_version}/wabt-${wabt_version}-ubuntu.tar.gz
+          curl -sSL ${wabt_url} | tar --strip-components 2 -C /usr/local/bin -xzf - wabt-${wabt_version}/bin/wat2wasm
+
+      - run: make testdata
+
       - run: make check
 
   test:
@@ -65,11 +72,5 @@ jobs:
           go-version: ${{ matrix.go-version }}
           cache: true
 
-      - name: "Set up wat2wasm"
-        run: |  # Needed for build.wat. wabt includes wat2wasm.
-          wabt_version=1.0.30
-          wabt_url=https://github.com/WebAssembly/wabt/releases/download/${wabt_version}/wabt-${wabt_version}-ubuntu.tar.gz
-          curl -sSL ${wabt_url} | tar --strip-components 2 -C /usr/local/bin -xzf - wabt-${wabt_version}/bin/wat2wasm
-
       - name: "Test"
-        run: make build.testdata test
+        run: make test
