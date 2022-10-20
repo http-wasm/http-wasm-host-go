@@ -21,7 +21,7 @@
   (func (export "handle") (call $next))
 
   ;; http-wasm guests are required to export "memory", so that imported
-  ;; functions like "get_request_header" can read memory.
+  ;; functions like "get_header" can read memory.
   (memory (export "memory") 1 1 (; 1 page==64KB ;))
 
   (func $must_enable_features

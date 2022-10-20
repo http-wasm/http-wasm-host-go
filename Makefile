@@ -8,7 +8,8 @@ testdata:
 wat_sources := $(wildcard examples/*.wat) $(wildcard internal/test/testdata/*/*.wat)
 build.wat: $(wat_sources)
 	@for f in $^; do \
-	    wat2wasm -o $$(echo $$f | sed -e 's/\.wat/\.wasm/') --debug-names $$f; \
+        wasm=$$(echo $$f | sed -e 's/\.wat/\.wasm/'); \
+	    wat2wasm -o $$wasm --debug-names $$f; \
 	done
 
 .PHONY: test

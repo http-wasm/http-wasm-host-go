@@ -185,3 +185,22 @@ func TestProtocolVersion(t *testing.T) {
 		})
 	}
 }
+
+// TestHeaderNames uses test.BinE2EHeaderNames which ensures count/len are
+// correct.
+func TestHeaderNames(t *testing.T) {
+	mw, err := wasm.NewMiddleware(testCtx, test.BinE2EHeaderNames)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mw.Close(testCtx)
+
+	ts := httptest.NewServer(mw.NewHandler(testCtx, noopHandler))
+	defer ts.Close()
+
+	resp, err := ts.Client().Get(ts.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+}

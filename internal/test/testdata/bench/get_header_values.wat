@@ -1,7 +1,10 @@
-;; $ wat2wasm --debug-names get_request_header.wat
-(module $get_request_header
-  (import "http-handler" "get_request_header"
-    (func $get_request_header (param i32 i32 i32 i32) (result i64)))
+(module $get_header_values
+
+  (import "http-handler" "get_header_values" (func $get_header_values
+    (param $kind i32)
+    (param $name i32) (param $name_len i32)
+    (param $buf i32) (param $buf_limit i32)
+    (result (; count << 32| len ;) i64)))
 
   (memory (export "memory") 1 1 (; 1 page==64KB ;))
 
@@ -13,7 +16,8 @@
   (global $buf_limit i32 (i32.const 64))
 
   (func $handle (export "handle")
-    (call $get_request_header
+    (call $get_header_values
+      (i32.const 0) ;; header_kind_request
       (global.get $name) (global.get $name_len)
       (global.get $buf) (global.get $buf_limit))
     (drop))

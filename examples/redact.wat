@@ -2,15 +2,6 @@
 ;; how a handler works and that it is decoupled from other ABI such as WASI.
 ;; Most users will prefer a higher-level language such as C, Rust or TinyGo.
 (module $redact
-  ;; read_body reads up to $buf_len bytes remaining in the body into memory at
-  ;; offset $buf. A zero $buf_len will panic.
-  ;;
-  ;; The result is `0 or EOF(1) << 32|len`, where `len` is the possibly zero
-  ;; length of bytes read.
-  (type $read_body (func
-    (param $buf i32) (param $buf_len i32)
-    (result (; 0 or EOF(1) << 32 | len ;) i64)))
-
   ;; enable_features tries to enable the given features and returns the entire
   ;; feature bitflag supported by the host.
   (import "http-handler" "enable_features" (func $enable_features
@@ -23,38 +14,28 @@
     (param $buf i32) (param $buf_limit i32)
     (result (; len ;) i32)))
 
-  ;; read_request_body consumes the body unless $feature_buffer_request is
-  ;; enabled.
-  (import "http-handler" "read_request_body" (func $read_request_body
-    (type $read_body)))
+  ;; read_body reads up to $buf_limit bytes remaining in the $kind body into
+  ;; memory at offset $buf. A zero $buf_limit will panic.
+  ;;
+  ;; The result is `0 or EOF(1) << 32|len`, where `len` is the length in bytes
+  ;; read.
+  (import "http-handler" "read_body" (func $read_body
+    (param $kind i32)
+    (param $buf i32) (param $buf_len i32)
+    (result (; 0 or EOF(1) << 32 | len ;) i64)))
 
-  ;; write_request_body overwrites the request body with a value read from memory.
-  (import "http-handler" "write_request_body" (func $write_request_body
+  ;; write_body reads $buf_len bytes at memory offset `buf` and writes them to
+  ;; the pending $kind body.
+  (import "http-handler" "write_body" (func $write_body
+    (param $kind i32)
     (param $buf i32) (param $buf_len i32)))
 
   ;; next dispatches control to the next handler on the host.
   (import "http-handler" "next" (func $next))
 
-  ;; read_response_body requires $feature_buffer_response.
-  (import "http-handler" "read_response_body" (func $read_response_body
-    (type $read_body)))
-
-  ;; write_response_body overwrites the response body with a value read from memory.
-  (import "http-handler" "write_response_body" (func $write_response_body
-    (param $buf i32) (param $buf_len i32)))
-
   ;; http-wasm guests are required to export "memory", so that imported
-  ;; functions like $read_response_body can read memory.
+  ;; functions like $read_body can read memory.
   (memory (export "memory") 1 1 (; 1 page==64KB ;))
-
-  ;; define a function table for getting a request or response body.
-  (table 8 funcref)
-  (elem (i32.const 0) $read_request_body)
-  (elem (i32.const 1) $read_response_body)
-  (func $read_body_request (result (; len ;) i32)
-    (call $read_body (i32.const 0)))
-  (func $read_body_response (result (; len ;) i32)
-    (call $read_body (i32.const 1)))
 
   ;; eof is the upper 32-bits of the $read_body result on EOF.
   (global $eof i64 (i64.const 4294967296)) ;; `1<<32|0`
@@ -107,9 +88,9 @@
     (call $enable_buffering)
     (call $read_secret))
 
-  ;; read_body returns the length of the body using the given function
-  ;; table index or fails if out of memory.
-  (func $read_body (param $body_fn i32) (result (; len ;) i32)
+  ;; must_read_body reads and returns the length of the body of the given $kind
+  ;; or fails if out of memory.
+  (func $must_read_body (param $kind i32) (result (; len ;) i32)
     (local $limit  i32)
     (local $result i64)
     (local $len    i32)
@@ -119,9 +100,11 @@
       (i32.mul (memory.size) (i32.const 65536))
       (global.get $body)))
 
-    ;; result = table[body_fn](body, limit)
+    ;; result = read_body(kind, body, limit)
     (local.set $result
-      (call_indirect (type $read_body) (global.get $body) (local.get $limit) (local.get $body_fn)))
+      (call $read_body
+        (local.get $kind)
+        (global.get $body) (local.get $limit)))
 
     ;; len = uint32(result)
     (local.set $len (i32.wrap_i64 (local.get $result)))
@@ -139,22 +122,26 @@
     (local $len i32)
 
     ;; load the request body from the upstream handler into memory.
-    (local.set $len (call $read_body_request))
+    (local.set $len (call $must_read_body (i32.const 0)))
 
     ;; if redaction affected the copy of the request in memory...
     (if (call $redact (global.get $body) (local.get $len))
       (then ;; overwrite the request body on the host with the redacted one.
-        (call $write_request_body (global.get $body) (local.get $len))))
+        (call $write_body
+          (i32.const 0) ;; body_kind_request
+          (global.get $body) (local.get $len))))
 
     (call $next) ;; dispatch with $feature_buffer_response enabled.
 
     ;; load the response body from the downstream handler into memory.
-    (local.set $len (call $read_body_response))
+    (local.set $len (call $must_read_body (i32.const 1)))
 
     ;; if redaction affected the copy of the response in memory...
     (if (call $redact (global.get $body) (local.get $len))
       (then ;; overwrite the response body on the host with the redacted one.
-        (call $write_response_body (global.get $body) (local.get $len)))))
+        (call $write_body
+          (i32.const 1) ;; body_kind_response
+          (global.get $body) (local.get $len)))))
 
   ;; redact inline replaces any secrets in the memory region with hashes (#).
   (func $redact (param $ptr i32) (param $len i32) (result (; redacted ;) i32)

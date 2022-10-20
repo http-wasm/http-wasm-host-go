@@ -45,59 +45,58 @@ type Host interface {
 	GetProtocolVersion(ctx context.Context) string
 
 	// GetRequestHeaderNames supports the WebAssembly function export
-	// FuncGetRequestHeaderNames.
+	// FuncGetHeaderNames with HeaderKindRequest. This returns nil if no
+	// headers exist.
 	GetRequestHeaderNames(ctx context.Context) []string
 
-	// GetRequestHeader supports the WebAssembly function export
-	// FuncGetRequestHeader. This returns false if the value doesn't exist.
-	GetRequestHeader(ctx context.Context, name string) (string, bool)
+	// GetRequestHeaderValues supports the WebAssembly function export
+	// FuncGetHeaderValues with HeaderKindRequest. This returns nil if no
+	// values exist.
+	GetRequestHeaderValues(ctx context.Context, name string) []string
 
-	// GetRequestHeaders supports the WebAssembly function export
-	// FuncGetRequestHeaders. This returns nil if a value doesn't exist.
-	GetRequestHeaders(ctx context.Context, name string) []string
+	// SetRequestHeaderValue supports the WebAssembly function export
+	// FuncSetHeaderValue with HeaderKindRequest.
+	SetRequestHeaderValue(ctx context.Context, name, value string)
 
-	// SetRequestHeader supports the WebAssembly function export
-	// FuncSetRequestHeader.
-	SetRequestHeader(ctx context.Context, name, value string)
-
-	// AddRequestHeader supports the WebAssembly function export
-	// FuncAddRequestHeader.
-	AddRequestHeader(ctx context.Context, name, value string)
+	// AddRequestHeaderValue supports the WebAssembly function export
+	// FuncAddHeaderValue with HeaderKindRequest.
+	AddRequestHeaderValue(ctx context.Context, name, value string)
 
 	// RemoveRequestHeader supports the WebAssembly function export
-	// FuncRemoveRequestHeader.
+	// FuncRemoveHeader with HeaderKindRequest.
 	RemoveRequestHeader(ctx context.Context, name string)
 
 	// RequestBodyReader supports the WebAssembly function export
-	// FuncReadRequestBody.
+	// FuncReadBody with BodyKindRequest.
 	RequestBodyReader(ctx context.Context) io.ReadCloser
 
 	// RequestBodyWriter supports the WebAssembly function export
-	// FuncWriteRequestBody.
+	// FuncWriteBody with BodyKindRequest.
 	RequestBodyWriter(ctx context.Context) io.Writer
 
 	// GetRequestTrailerNames supports the WebAssembly function export
-	// FuncGetRequestTrailerNames.
+	// FuncGetHeaderNames with HeaderKindRequestTrailers. This returns nil if
+	// no trailers exist or FeatureTrailers is not supported.
 	GetRequestTrailerNames(ctx context.Context) []string
 
-	// GetRequestTrailer supports the WebAssembly function export
-	// FuncGetRequestTrailer. This returns false if the value doesn't exist.
-	GetRequestTrailer(ctx context.Context, name string) (string, bool)
+	// GetRequestTrailerValues supports the WebAssembly function export
+	// FuncGetHeaderValues with HeaderKindRequestTrailers. This returns nil if
+	// no values exist or FeatureTrailers is not supported.
+	GetRequestTrailerValues(ctx context.Context, name string) []string
 
-	// GetRequestTrailers supports the WebAssembly function export
-	// FuncGetRequestTrailers. This returns nil if a value doesn't exist.
-	GetRequestTrailers(ctx context.Context, name string) []string
+	// SetRequestTrailerValue supports the WebAssembly function export
+	// FuncSetHeaderValue with HeaderKindRequestTrailers. This panics if
+	// FeatureTrailers is not supported.
+	SetRequestTrailerValue(ctx context.Context, name, value string)
 
-	// SetRequestTrailer supports the WebAssembly function export
-	// FuncSetRequestTrailer.
-	SetRequestTrailer(ctx context.Context, name, value string)
-
-	// AddRequestTrailer supports the WebAssembly function export
-	// FuncAddRequestTrailer.
-	AddRequestTrailer(ctx context.Context, name, value string)
+	// AddRequestTrailerValue supports the WebAssembly function export
+	// FuncAddHeaderValue with HeaderKindRequestTrailers. This panics if
+	// FeatureTrailers is not supported.
+	AddRequestTrailerValue(ctx context.Context, name, value string)
 
 	// RemoveRequestTrailer supports the WebAssembly function export
-	// FuncRemoveRequestTrailer.
+	// FuncRemoveHeader with HeaderKindRequestTrailers. This panics if
+	// FeatureTrailers is not supported.
 	RemoveRequestTrailer(ctx context.Context, name string)
 
 	// Next supports the WebAssembly function export FuncNext, which invokes
@@ -113,58 +112,57 @@ type Host interface {
 	SetStatusCode(ctx context.Context, statusCode uint32)
 
 	// GetResponseHeaderNames supports the WebAssembly function export
-	// FuncGetResponseHeaderNames.
+	// FuncGetHeaderNames with HeaderKindResponse. This returns nil if no
+	// headers exist.
 	GetResponseHeaderNames(ctx context.Context) []string
 
-	// GetResponseHeader supports the WebAssembly function export
-	// FuncGetResponseHeader. This returns false if the value doesn't exist.
-	GetResponseHeader(ctx context.Context, name string) (string, bool)
+	// GetResponseHeaderValues supports the WebAssembly function export
+	// FuncGetHeaderValues with HeaderKindResponse. This returns nil if no
+	// values exist.
+	GetResponseHeaderValues(ctx context.Context, name string) []string
 
-	// GetResponseHeaders supports the WebAssembly function export
-	// FuncGetResponseHeaders. This returns nil if a value doesn't exist.
-	GetResponseHeaders(ctx context.Context, name string) []string
+	// SetResponseHeaderValue supports the WebAssembly function export
+	// FuncSetHeaderValue with HeaderKindResponse.
+	SetResponseHeaderValue(ctx context.Context, name, value string)
 
-	// SetResponseHeader supports the WebAssembly function export
-	// FuncSetResponseHeader.
-	SetResponseHeader(ctx context.Context, name, value string)
-
-	// AddResponseHeader supports the WebAssembly function export
-	// FuncAddResponseHeader.
-	AddResponseHeader(ctx context.Context, name, value string)
+	// AddResponseHeaderValue supports the WebAssembly function export
+	// FuncAddHeaderValue with HeaderKindResponse.
+	AddResponseHeaderValue(ctx context.Context, name, value string)
 
 	// RemoveResponseHeader supports the WebAssembly function export
-	// FuncRemoveResponseHeader.
+	// FuncRemoveHeader with HeaderKindResponse.
 	RemoveResponseHeader(ctx context.Context, name string)
 
 	// ResponseBodyReader supports the WebAssembly function export
-	// FuncReadResponseBody.
+	// FuncReadBody with BodyKindResponse.
 	ResponseBodyReader(ctx context.Context) io.ReadCloser
 
 	// ResponseBodyWriter supports the WebAssembly function export
-	// FuncWriteResponseBody.
+	// FuncWriteBody with BodyKindResponse.
 	ResponseBodyWriter(ctx context.Context) io.Writer
 
 	// GetResponseTrailerNames supports the WebAssembly function export
-	// FuncGetResponseTrailerNames.
+	// FuncGetHeaderNames with HeaderKindResponseTrailers. This returns nil if
+	// no trailers exist or FeatureTrailers is not supported.
 	GetResponseTrailerNames(ctx context.Context) []string
 
-	// GetResponseTrailer supports the WebAssembly function export
-	// FuncGetResponseTrailer. This returns false if the value doesn't exist.
-	GetResponseTrailer(ctx context.Context, name string) (string, bool)
+	// GetResponseTrailerValues supports the WebAssembly function export
+	// FuncGetHeaderValues with HeaderKindResponseTrailers. This returns nil if
+	// no values exist or FeatureTrailers is not supported.
+	GetResponseTrailerValues(ctx context.Context, name string) []string
 
-	// GetResponseTrailers supports the WebAssembly function export
-	// FuncGetResponseTrailers. This returns nil if a value doesn't exist.
-	GetResponseTrailers(ctx context.Context, name string) []string
+	// SetResponseTrailerValue supports the WebAssembly function export
+	// FuncSetHeaderValue with HeaderKindResponseTrailers. This panics if
+	// FeatureTrailers is not supported.
+	SetResponseTrailerValue(ctx context.Context, name, value string)
 
-	// SetResponseTrailer supports the WebAssembly function export
-	// FuncSetResponseTrailer.
-	SetResponseTrailer(ctx context.Context, name, value string)
-
-	// AddResponseTrailer supports the WebAssembly function export
-	// FuncAddResponseTrailer.
-	AddResponseTrailer(ctx context.Context, name, value string)
+	// AddResponseTrailerValue supports the WebAssembly function export
+	// FuncAddHeaderValue with HeaderKindResponseTrailers. This panics if
+	// FeatureTrailers is not supported.
+	AddResponseTrailerValue(ctx context.Context, name, value string)
 
 	// RemoveResponseTrailer supports the WebAssembly function export
-	// FuncRemoveResponseTrailer.
+	// FuncRemoveHeader with HeaderKindResponseTrailers. This panics if
+	// FeatureTrailers is not supported.
 	RemoveResponseTrailer(ctx context.Context, name string)
 }

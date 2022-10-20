@@ -71,7 +71,7 @@ func TestURI(t *testing.T) {
 }
 
 func TestProtocolVersion(t *testing.T) {
-	tesbackend := []struct {
+	tests := []struct {
 		http2    bool
 		respBody string
 	}{
@@ -87,7 +87,7 @@ func TestProtocolVersion(t *testing.T) {
 	mosn := startMosn(t, backend.Listener.Addr().String(), test.BinE2EProtocolVersion)
 	defer mosn.Close()
 
-	for _, tc := range tesbackend {
+	for _, tc := range tests {
 		tt := tc
 		t.Run(tt.respBody, func(t *testing.T) {
 			resp, err := http.Get(mosn.url)
@@ -107,7 +107,7 @@ func TestProtocolVersion(t *testing.T) {
 }
 
 func TestExampleAuth(t *testing.T) {
-	tesbackend := []struct {
+	tests := []struct {
 		hdr          http.Header
 		status       int
 		authenticate bool
@@ -120,7 +120,7 @@ func TestExampleAuth(t *testing.T) {
 		{
 			hdr:          http.Header{"Authorization": {""}},
 			status:       http.StatusUnauthorized,
-			authenticate: true,
+			authenticate: false,
 		},
 		{
 			hdr:          http.Header{"Authorization": {"Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ=="}},
@@ -139,7 +139,7 @@ func TestExampleAuth(t *testing.T) {
 	mosn := startMosn(t, backend.Listener.Addr().String(), test.BinExampleAuth)
 	defer mosn.Close()
 
-	for _, tc := range tesbackend {
+	for _, tc := range tests {
 		tt := tc
 		t.Run(fmt.Sprintf("%s", tt.hdr), func(t *testing.T) {
 			req, err := http.NewRequest(http.MethodGet, mosn.url, nil)
@@ -194,7 +194,7 @@ func TestExampleLog(t *testing.T) {
 }
 
 func TestExampleRouter(t *testing.T) {
-	tesbackend := []struct {
+	tests := []struct {
 		path     string
 		respBody string
 	}{
@@ -221,7 +221,7 @@ func TestExampleRouter(t *testing.T) {
 	mosn := startMosn(t, backend.Listener.Addr().String(), test.BinExampleRouter)
 	defer mosn.Close()
 
-	for _, tc := range tesbackend {
+	for _, tc := range tests {
 		tt := tc
 		t.Run(tt.path, func(t *testing.T) {
 			url := fmt.Sprintf("%s%s", mosn.url, tt.path)
@@ -239,7 +239,7 @@ func TestExampleRouter(t *testing.T) {
 }
 
 func TestExampleRedact(t *testing.T) {
-	tesbackend := []struct {
+	tests := []struct {
 		body     string
 		respBody string
 	}{
@@ -269,7 +269,7 @@ func TestExampleRedact(t *testing.T) {
 	mosn := startMosn(t, backend.Listener.Addr().String(), test.BinExampleRedact)
 	defer mosn.Close()
 
-	for _, tc := range tesbackend {
+	for _, tc := range tests {
 		tt := tc
 		t.Run(tt.body, func(t *testing.T) {
 			// body is both the request to the proxy and the response from the backend

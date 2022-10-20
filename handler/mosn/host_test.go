@@ -188,30 +188,27 @@ func Test_host_GetRequestHeaderNames(t *testing.T) {
 	}
 }
 
-func Test_host_GetRequestHeader(t *testing.T) {
+func Test_host_GetRequestHeaderValues(t *testing.T) {
 	tests := []struct {
-		name          string
-		reqHeaders    api.HeaderMap
-		headerName    string
-		expectedOk    bool
-		expectedValue string
+		name       string
+		headerName string
+		expected   []string
 	}{
 		{
-			name:          "single value",
-			headerName:    "Content-Type",
-			expectedOk:    true,
-			expectedValue: "text/plain",
+			name:       "single value",
+			headerName: "Content-Type",
+			expected:   []string{"text/plain"},
 		},
+		// TODO: multi-field
 		{
-			name:          "comma value",
-			headerName:    "Vary",
-			expectedOk:    true,
-			expectedValue: "Accept-Encoding, User-Agent",
+			name:       "comma value",
+			headerName: "Vary",
+			expected:   []string{"Accept-Encoding, User-Agent"},
 		},
 		{
 			name:       "empty value",
 			headerName: "Empty",
-			expectedOk: true,
+			expected:   []string{""},
 		},
 		{
 			name:       "no value",
@@ -223,26 +220,20 @@ func Test_host_GetRequestHeader(t *testing.T) {
 	for _, tt := range tests {
 		tc := tt
 		t.Run(tc.name, func(t *testing.T) {
-			reqHeaders := tc.reqHeaders
-			if reqHeaders == nil {
-				reqHeaders = newRequestHeader()
-				addTestHeaders(reqHeaders)
-			}
+			reqHeaders := newRequestHeader()
+			addTestHeaders(reqHeaders)
 			ctx := variable.NewVariableContext(context.Background())
 			ctx = context.WithValue(ctx, filterKey{}, &filter{reqHeaders: reqHeaders})
 
-			value, ok := h.GetRequestHeader(ctx, tc.headerName)
-			if want, have := tc.expectedValue, value; want != have {
-				t.Errorf("unexpected header value, want: %v, have: %v", want, have)
-			}
-			if want, have := tc.expectedOk, ok; want != have {
-				t.Errorf("unexpected header ok, want: %v, have: %v", want, have)
+			values := h.GetRequestHeaderValues(ctx, tc.headerName)
+			if want, have := tc.expected, values; !reflect.DeepEqual(want, have) {
+				t.Errorf("unexpected header values, want: %v, have: %v", want, have)
 			}
 		})
 	}
 }
 
-func Test_host_SetRequestHeader(t *testing.T) {
+func Test_host_SetRequestHeaderValue(t *testing.T) {
 	tests := []struct {
 		name       string
 		reqHeaders api.HeaderMap
@@ -300,7 +291,7 @@ func Test_host_SetRequestHeader(t *testing.T) {
 			ctx := variable.NewVariableContext(context.Background())
 			ctx = context.WithValue(ctx, filterKey{}, &filter{reqHeaders: reqHeaders})
 
-			h.SetRequestHeader(ctx, tc.headerName, tc.value)
+			h.SetRequestHeaderValue(ctx, tc.headerName, tc.value)
 			if want, have := tc.value, strings.Join(headerValues(reqHeaders, tc.headerName), "|"); want != have {
 				t.Errorf("unexpected header, want: %v, have: %v", want, have)
 			}
@@ -322,30 +313,27 @@ func Test_host_GetResponseHeaderNames(t *testing.T) {
 	}
 }
 
-func Test_host_GetResponseHeader(t *testing.T) {
+func Test_host_GetResponseHeaderValues(t *testing.T) {
 	tests := []struct {
-		name          string
-		respHeaders   api.HeaderMap
-		headerName    string
-		expectedOk    bool
-		expectedValue string
+		name       string
+		headerName string
+		expected   []string
 	}{
 		{
-			name:          "single value",
-			headerName:    "Content-Type",
-			expectedOk:    true,
-			expectedValue: "text/plain",
+			name:       "single value",
+			headerName: "Content-Type",
+			expected:   []string{"text/plain"},
 		},
+		// TODO: multi-field
 		{
-			name:          "comma value",
-			headerName:    "Vary",
-			expectedOk:    true,
-			expectedValue: "Accept-Encoding, User-Agent",
+			name:       "comma value",
+			headerName: "Vary",
+			expected:   []string{"Accept-Encoding, User-Agent"},
 		},
 		{
 			name:       "empty value",
 			headerName: "Empty",
-			expectedOk: true,
+			expected:   []string{""},
 		},
 		{
 			name:       "no value",
@@ -357,26 +345,20 @@ func Test_host_GetResponseHeader(t *testing.T) {
 	for _, tt := range tests {
 		tc := tt
 		t.Run(tc.name, func(t *testing.T) {
-			respHeaders := tc.respHeaders
-			if respHeaders == nil {
-				respHeaders = newResponseHeader()
-				addTestHeaders(respHeaders)
-			}
+			respHeaders := newResponseHeader()
+			addTestHeaders(respHeaders)
 			ctx := variable.NewVariableContext(context.Background())
 			ctx = context.WithValue(ctx, filterKey{}, &filter{respHeaders: respHeaders})
 
-			value, ok := h.GetResponseHeader(ctx, tc.headerName)
-			if want, have := tc.expectedValue, value; want != have {
-				t.Errorf("unexpected header value, want: %v, have: %v", want, have)
-			}
-			if want, have := tc.expectedOk, ok; want != have {
-				t.Errorf("unexpected header ok, want: %v, have: %v", want, have)
+			values := h.GetResponseHeaderValues(ctx, tc.headerName)
+			if want, have := tc.expected, values; !reflect.DeepEqual(want, have) {
+				t.Errorf("unexpected header values, want: %v, have: %v", want, have)
 			}
 		})
 	}
 }
 
-func Test_host_SetResponseHeader(t *testing.T) {
+func Test_host_SetResponseHeaderValue(t *testing.T) {
 	tests := []struct {
 		name        string
 		respHeaders api.HeaderMap
@@ -429,7 +411,7 @@ func Test_host_SetResponseHeader(t *testing.T) {
 			ctx := variable.NewVariableContext(context.Background())
 			ctx = context.WithValue(ctx, filterKey{}, &filter{respHeaders: respHeaders})
 
-			h.SetResponseHeader(ctx, tc.headerName, tc.value)
+			h.SetResponseHeaderValue(ctx, tc.headerName, tc.value)
 			if want, have := tc.value, strings.Join(headerValues(respHeaders, tc.headerName), "|"); want != have {
 				t.Errorf("unexpected header, want: %v, have: %v", want, have)
 			}

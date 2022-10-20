@@ -7,7 +7,8 @@
   (import "http-handler" "set_uri" (func $set_uri
     (param $uri i32) (param $uri_len i32)))
 
-  (import "http-handler" "write_request_body" (func $write_request_body
+  (import "http-handler" "write_body" (func $write_body
+    (param $kind i32)
     (param $buf i32) (param $buf_len i32)))
 
   (import "http-handler" "next" (func $next))
@@ -36,7 +37,9 @@
     (call $set_uri (global.get $uri) (global.get $uri_len))
 
     ;; write the uri to the request body.
-    (call $write_request_body (global.get $buf) (local.get $len))
+    (call $write_body
+      (i32.const 0) ;; body_kind_request
+      (global.get $buf) (local.get $len))
 
     ;; call the next handler which verifies state
     (call $next))

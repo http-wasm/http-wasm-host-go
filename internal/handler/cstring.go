@@ -7,16 +7,24 @@ import (
 	wazeroapi "github.com/tetratelabs/wazero/api"
 )
 
-func writeNULTerminated(ctx context.Context, mem wazeroapi.Memory, buf, bufLimit uint32, input []string) (byteCount uint32) {
+func writeNULTerminated(
+	ctx context.Context,
+	mem wazeroapi.Memory,
+	buf, bufLimit uint32,
+	input []string,
+) (countLen uint64) {
 	count := uint32(len(input))
 	if count == 0 {
 		return
 	}
 
-	byteCount = count // NUL terminator count
+	byteCount := count // NUL terminator count
 	for _, s := range input {
 		byteCount += uint32(len(s))
 	}
+
+	countLen = uint64(count)<<32 | uint64(byteCount)
+
 	if byteCount > bufLimit {
 		return // the guest can retry with a larger limit
 	}

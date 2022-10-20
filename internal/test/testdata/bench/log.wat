@@ -1,5 +1,5 @@
-;; $ wat2wasm --debug-names log.wat
 (module $log
+
   (import "http-handler" "log"
     (func $log (param i32 i32)))
 

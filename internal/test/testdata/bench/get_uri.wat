@@ -1,5 +1,5 @@
-;; $ wat2wasm --debug-names get_uri.wat
 (module $get_uri
+
   (import "http-handler" "get_uri"
     (func $get_uri (param i32 i32) (result i32)))
 

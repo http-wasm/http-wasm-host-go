@@ -95,17 +95,17 @@ var benches = map[string]struct {
 		next:    handlerExampleWASI,
 		request: requestExampleWASI,
 	},
+	"example router guest response": {
+		bin: test.BinExampleRouter,
+		request: func(url string) (req *http.Request) {
+			req, _ = http.NewRequest(http.MethodGet, url, nil)
+			return
+		},
+	},
 	"example router host response": {
 		bin: test.BinExampleRouter,
 		request: func(url string) (req *http.Request) {
 			req, _ = http.NewRequest(http.MethodGet, url+"/host", nil)
-			return
-		},
-	},
-	"example router wasm response": {
-		bin: test.BinExampleRouter,
-		request: func(url string) (req *http.Request) {
-			req, _ = http.NewRequest(http.MethodGet, url, nil)
 			return
 		},
 	},
@@ -121,36 +121,48 @@ var benches = map[string]struct {
 		bin:     test.BinBenchSetURI,
 		request: get,
 	},
-	"get_request_header_names none": {
-		bin:     test.BinBenchGetRequestHeaderNames,
+	"get_header_names none": {
+		bin:     test.BinBenchGetHeaderNames,
 		request: getWithoutHeaders,
 	},
-	"get_request_header_names": {
-		bin:     test.BinBenchGetRequestHeaderNames,
+	"get_header_names": {
+		bin:     test.BinBenchGetHeaderNames,
 		request: get,
 	},
-	"get_request_header_names large": {
-		bin:     test.BinBenchGetRequestHeaderNames,
+	"get_header_names large": {
+		bin:     test.BinBenchGetHeaderNames,
 		request: getWithLargeHeader,
 	},
-	"get_request_header exists": {
-		bin:     test.BinBenchGetRequestHeader,
+	"get_header_values exists": {
+		bin:     test.BinBenchGetHeaderValues,
 		request: get,
 	},
-	"get_request_header not exists": {
-		bin:     test.BinBenchGetRequestHeader,
+	"get_header_values not exists": {
+		bin:     test.BinBenchGetHeaderValues,
 		request: getWithoutHeaders,
 	},
-	"read_request_body": {
-		bin:     test.BinBenchReadRequestBody,
+	"set_header_value": {
+		bin:     test.BinBenchSetHeaderValue,
+		request: get,
+	},
+	"add_header_value": {
+		bin:     test.BinBenchAddHeaderValue,
+		request: get,
+	},
+	"remove_header": {
+		bin:     test.BinBenchRemoveHeader,
+		request: get,
+	},
+	"read_body": {
+		bin:     test.BinBenchReadBody,
 		request: post,
 	},
-	"read_request_body_stream": {
-		bin:     test.BinBenchReadRequestBodyStream,
+	"read_body_stream": {
+		bin:     test.BinBenchReadBodyStream,
 		request: post,
 	},
-	"read_request_body_stream large": {
-		bin:     test.BinBenchReadRequestBodyStream,
+	"read_body_stream large": {
+		bin:     test.BinBenchReadBodyStream,
 		request: postLarge,
 	},
 	"next": {
@@ -161,12 +173,8 @@ var benches = map[string]struct {
 		bin:     test.BinBenchSetStatusCode,
 		request: get,
 	},
-	"set_response_header": {
-		bin:     test.BinBenchSetResponseHeader,
-		request: get,
-	},
-	"write_response_body": {
-		bin:     test.BinBenchWriteResponseBody,
+	"write_body": {
+		bin:     test.BinBenchWriteBody,
 		request: get,
 	},
 }

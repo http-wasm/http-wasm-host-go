@@ -7,30 +7,6 @@
     (param $fd i32) (param $iovs i32) (param $iovs_len i32) (param $result.size i32)
     (result (;errno;) i32)))
 
-  ;; get_headers writes all header values, NUL-terminated, to memory if the
-  ;; encoded length isn't larger than `buf-limit`. The result is the encoded
-  ;; length in bytes. Ex. "val1\0val2\0" == 10
-  (type $get_headers (func
-    (param $name i32) (param $name_len i32)
-    (param $buf i32) (param $buf_limit i32)
-    (result (; len ;) i32)))
-
-  ;; get_header_names writes writes all header names, NUL-terminated, to memory
-  ;; if the encoded length isn't larger than `$buf_limit. The result is the
-  ;; encoded length in bytes. Ex. "Accept\0Date"
-  (type $get_header_names (func
-    (param $buf i32) (param $buf_limit i32)
-    (result (; len ;) i32)))
-
-  ;; read_body reads up to $buf_len bytes remaining in the body into memory at
-  ;; offset $buf. A zero $buf_len will panic.
-  ;;
-  ;; The result is `0 or EOF(1) << 32|len`, where `len` is the possibly zero
-  ;; length of bytes read.
-  (type $read_body (func
-    (param $buf i32) (param $buf_len i32)
-    (result (; 0 or EOF(1) << 32 | len ;) i64)))
-
   ;; enable_features tries to enable the given features and returns the entire
   ;; feature bitflag supported by the host.
   (import "http-handler" "enable_features" (func $enable_features
@@ -56,20 +32,39 @@
     (param $buf i32) (param $buf_limit i32)
     (result (; len ;) i32)))
 
-  (import "http-handler" "get_request_header_names" (func $get_request_header_names
-    (type $get_header_names)))
 
-  (import "http-handler" "get_request_headers" (func $get_request_headers
-    (type $get_headers)))
+  ;; get_header_names writes all header names for the given $kind,
+  ;; NUL-terminated, to memory if the encoded length isn't larger than
+  ;; $buf_limit. The result is regardless of whether memory was written.
+  (import "http-handler" "get_header_names" (func $get_header_names
+    (param $kind i32)
+    (param $buf i32) (param $buf_limit i32)
+    (result (; count << 32| len ;) i64)))
 
-  (import "http-handler" "read_request_body" (func $read_request_body
-    (type $read_body)))
+  ;; get_header_values writes all header names of the given $kind and $name,
+  ;; NUL-terminated, to memory if the encoded length isn't larger than
+  ;; $buf_limit. The result is regardless of whether memory was written.
+  (import "http-handler" "get_header_values" (func $get_header_values
+    (param $kind i32)
+    (param $name i32) (param $name_len i32)
+    (param $buf i32) (param $buf_limit i32)
+    (result (; count << 32| len ;) i64)))
 
-  (import "http-handler" "get_request_trailer_names" (func $get_request_trailer_names
-    (type $get_header_names)))
+  ;; read_body reads up to $buf_limit bytes remaining in the $kind body into
+  ;; memory at offset $buf. A zero $buf_limit will panic.
+  ;;
+  ;; The result is `0 or EOF(1) << 32|len`, where `len` is the length in bytes
+  ;; read.
+  (import "http-handler" "read_body" (func $read_body
+    (param $kind i32)
+    (param $buf i32) (param $buf_len i32)
+    (result (; 0 or EOF(1) << 32 | len ;) i64)))
 
-  (import "http-handler" "get_request_trailers" (func $get_request_trailers
-    (type $get_headers)))
+  ;; write_body reads $buf_len bytes at memory offset `buf` and writes them to
+  ;; the pending $kind body.
+  (import "http-handler" "write_body" (func $write_body
+    (param $kind i32)
+    (param $buf i32) (param $buf_len i32)))
 
   ;; next dispatches control to the next handler on the host.
   (import "http-handler" "next" (func $next))
@@ -77,24 +72,6 @@
   ;; get_status_code returnts the status code produced by $next.
   (import "http-handler" "get_status_code" (func $get_status_code
     (result (; status_code ;) i32)))
-
-  ;; get_response_header_names requires $feature_buffer_response.
-  (import "http-handler" "get_response_header_names" (func $get_response_header_names
-    (type $get_header_names)))
-
-  ;; get_response_header requires $feature_buffer_response.
-  (import "http-handler" "get_response_headers" (func $get_response_headers
-    (type $get_headers)))
-
-  ;; read_response_body requires $feature_buffer_response.
-  (import "http-handler" "read_response_body" (func $read_response_body
-    (type $read_body)))
-
-  (import "http-handler" "get_response_trailer_names" (func $get_response_trailer_names
-    (type $get_header_names)))
-
-  (import "http-handler" "get_response_trailers" (func $get_response_trailers
-    (type $get_headers)))
 
   ;; http-wasm guests are required to export "memory", so that imported
   ;; functions like "fd_write" can read memory.
@@ -107,24 +84,19 @@
   (func $buf_remaining (param $buf i32) (result i32)
     (i32.sub (global.get $buf_limit) (local.get $buf)))
 
-  ;; define a function table for getting a request or response properties.
-  (table 10 funcref)
-  (elem (i32.const 0) $get_request_header_names)
-  (elem (i32.const 1) $get_request_headers)
-  (elem (i32.const 2) $read_request_body)
-  (elem (i32.const 3) $get_request_trailer_names)
-  (elem (i32.const 4) $get_request_trailers)
-  (elem (i32.const 5) $get_response_header_names)
-  (elem (i32.const 6) $get_response_headers)
-  (elem (i32.const 7) $read_response_body)
-  (elem (i32.const 8) $get_response_trailer_names)
-  (elem (i32.const 9) $get_response_trailers)
-  (func $print_request_headers (call $print_headers (i32.const 0) (i32.const 1)))
-  (func $print_request_body (call $print_body (i32.const 2)))
-  (func $print_request_trailers (call $print_headers (i32.const 3) (i32.const 4)))
-  (func $print_response_headers (call $print_headers (i32.const 5) (i32.const 6)))
-  (func $print_response_body (call $print_body (i32.const 7)))
-  (func $print_response_trailers (call $print_headers (i32.const 8) (i32.const 9)))
+  (func $print_request_headers
+    (call $print_headers (i32.const 0))) ;; header_kind_request
+  (func $print_request_body
+    (call $print_body (i32.const 0)))    ;; body_kind_request
+  (func $print_request_trailers
+    (call $print_headers (i32.const 2))) ;; header_kind_request_trailers
+  (func $print_response_headers
+    (call $print_headers (i32.const 1))) ;; header_kind_response
+  (func $print_response_body
+    (call $print_body (i32.const 1)))    ;; body_kind_response
+  (func $print_response_trailers
+    (call $print_headers (i32.const 3))) ;; header_kind_response_trailers
+
 
   ;; We don't require the trailers features as it defaults to no-op when
   ;; unsupported.
@@ -271,12 +243,15 @@
       (i32.sub (local.get $buf) (global.get $heap_start))))
 
   ;; $print_headers prints each header field to the console. Ex "a: b"
-  (func $print_headers (param $names_fn i32) (param $values_fn i32)
+  (func $print_headers (param $kind i32)
     ;; buf is the current position in memory, initially $heap_start.
     (local $buf i32)
 
-    ;; result is the length of all NUL-terminated values.
-    (local $result i32)
+    ;; result is count << 32| len
+    (local $result i64)
+
+    ;; names_len is the length of all NUL-terminated names.
+    (local $names_len i32)
 
     ;; buf_console is where the print function can begin writing.
     (local $buf_console i32)
@@ -289,22 +264,25 @@
 
     (local.set $buf (global.get $heap_start))
 
-    ;; result = table[names_fn](buf, buf_limit)
+    ;; result = get_header_names(kind, buf, buf_limit)
     (local.set $result
-      (call_indirect (type $get_header_names)
+      (call $get_header_names
+        (local.get  $kind)
         (local.get  $buf)
-        (global.get $buf_limit)
-        (local.get  $names_fn)))
+        (global.get $buf_limit)))
 
     ;; if there are no headers, return
-    (if (i32.eqz (local.get $result)) (then (return)))
+    (if (i64.eqz (local.get $result)) (then (return)))
 
-    ;; if result > buf_limit { panic }
-    (if (i32.gt_u (local.get $result) (global.get $buf_limit))
+    ;; names_len = uint32(result)
+    (local.set $names_len (i32.wrap_i64 (local.get $result)))
+
+    ;; if names_len > buf_limit { panic }
+    (if (i32.gt_u (local.get $names_len) (global.get $buf_limit))
        (then (unreachable))) ;; too big so wasn't written
 
     ;; We can start writing memory after the NUL-terminated header names.
-    (local.set $buf_console (i32.add (local.get $buf) (local.get $result)))
+    (local.set $buf_console (i32.add (local.get $buf) (local.get $names_len)))
 
     ;; loop while we can read a NUL-terminated name.
     (loop $names
@@ -315,12 +293,12 @@
           ;; name = buf -len
           (local.set $name (i32.sub (local.get $buf) (local.get $len)))
 
-          ;; print_header_fields(name, buf_console, buf_limit, values_fn)
+          ;; print_header_fields(kind, name, buf_console, buf_limit)
           (call $print_header_fields
+            (local.get  $kind)
             (local.get  $name) (local.get $len)
             (local.get  $buf_console)
-            (global.get $buf_limit) ;; buf_limit
-            (local.get  $values_fn))
+            (global.get $buf_limit))
 
           (local.set $buf (i32.add (local.get $buf) (i32.const 1))) ;; buf++
           (local.set $len (i32.const 0))) ;; len = 0
@@ -328,20 +306,22 @@
           (local.set $len (i32.add (local.get $len) (i32.const 1))) ;; len++
           (local.set $buf (i32.add (local.get $buf) (i32.const 1))))) ;; buf++
 
-      (local.set $result (i32.sub (local.get $result) (i32.const 1))) ;; result--
+      (local.set $names_len (i32.sub (local.get $names_len) (i32.const 1))) ;; names_len--
 
-      ;; if result > 0 { continue } else { break }
-      (br_if $names (i32.gt_u (local.get $result) (i32.const 0)))))
+      ;; if names_len > 0 { continue } else { break }
+      (br_if $names (i32.gt_u (local.get $names_len) (i32.const 0)))))
 
-  ;; print_header_fields prints each header field to the console, using the
-  ;; given function table index.
+  ;; print_header_fields prints each header field to the console.
   (func $print_header_fields
+    (param $kind i32)
     (param $name i32) (param  $name_len i32)
     (param  $buf i32) (param $buf_limit i32)
-    (param   $fn i32)
 
-    ;; result is the length of all NUL-terminated values.
-    (local $result i32)
+    ;; result is count << 32| len
+    (local $result i64)
+
+    ;; values_len is the length of all NUL-terminated values.
+    (local $values_len i32)
 
     ;; buf_console is where the print function can begin writing.
     (local $buf_console i32)
@@ -352,22 +332,21 @@
     ;; len is the length of the current NUL-terminated value, exclusive of NUL.
     (local $len i32)
 
-    ;; result = table[headers_fn](mem[name:name_len], mem[buf:buf_limit])
-    (local.set $result (call_indirect (type $get_headers)
+    ;; result = get_header_values(kind, mem[name:name_len], mem[buf:buf_limit])
+    (local.set $result (call $get_header_values
+      (local.get $kind)
       (local.get $name) (local.get $name_len)
-      (local.get $buf)  (local.get $buf_limit)
-      (local.get $fn)))
+      (local.get $buf)  (local.get $buf_limit)))
 
-    ;; if len == 0 { panic }
-    (if (i32.eqz (local.get $result))
-       (then (unreachable))) ;; header didn't exist
+    ;; values_len = uint32(result)
+    (local.set $values_len (i32.wrap_i64 (local.get $result)))
 
-    ;; if result > buf_limit { panic }
-    (if (i32.gt_u (local.get $result) (local.get $buf_limit))
+    ;; if values_len > buf_limit { panic }
+    (if (i32.gt_u (local.get $values_len) (global.get $buf_limit))
        (then (unreachable))) ;; too big so wasn't written
 
-    ;; buf_console = buf + result
-    (local.set $buf_console (i32.add (local.get $buf) (local.get $result)))
+    ;; buf_console = buf + values_len
+    (local.set $buf_console (i32.add (local.get $buf) (local.get $values_len)))
 
     ;; loop while we can read a NUL-terminated value.
     (loop $values
@@ -390,10 +369,10 @@
           (local.set $len (i32.add (local.get $len) (i32.const 1))) ;; len++
           (local.set $buf (i32.add (local.get $buf) (i32.const 1))))) ;; buf++
 
-      (local.set $result (i32.sub (local.get $result) (i32.const 1))) ;; result--
+      (local.set $values_len (i32.sub (local.get $values_len) (i32.const 1))) ;; values_len--
 
-      ;; if result > 0 { continue } else { break }
-      (br_if $values (i32.gt_u (local.get $result) (i32.const 0)))))
+      ;; if values_len > 0 { continue } else { break }
+      (br_if $values (i32.gt_u (local.get $values_len) (i32.const 0)))))
 
   ;; print_header_field prints a header field to the console, formatted like
   ;; "name: value".
@@ -440,18 +419,17 @@
       (local.get $buf_0)
       (i32.sub (local.get $buf) (local.get $buf_0))))
 
-  ;; print_body prints the body to the console, using the given function table
-  ;; index.
-  (func $print_body (param $body_fn i32)
+  ;; print_body prints the body of the given $kind to the console.
+  (func $print_body (param $kind i32)
     (local $result i64)
     (local $len i32)
 
-    ;; result = table[body_fn](heap_start, buf_limit)
+    ;; result = read_body(kind, heap_start, buf_limit)
     (local.set $result
-      (call_indirect (type $read_body)
+      (call $read_body
+        (local.get $kind)
         (global.get $heap_start)
-        (global.get $buf_limit)
-        (local.get $body_fn)))
+        (global.get $buf_limit)))
 
     ;; len = uint32(result)
     (local.set $len (i32.wrap_i64 (local.get $result)))

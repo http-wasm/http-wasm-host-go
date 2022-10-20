@@ -53,20 +53,16 @@ func (host) GetRequestHeaderNames(ctx context.Context) (names []string) {
 	return getHeaderNames(filterFromContext(ctx).reqHeaders)
 }
 
-func (host) GetRequestHeader(ctx context.Context, name string) (string, bool) {
-	return getHeader(filterFromContext(ctx).reqHeaders, name)
-}
-
-func (host) GetRequestHeaders(ctx context.Context, name string) []string {
+func (host) GetRequestHeaderValues(ctx context.Context, name string) []string {
 	return getHeaders(filterFromContext(ctx).reqHeaders, name)
 }
 
-func (host) SetRequestHeader(ctx context.Context, name, value string) {
+func (host) SetRequestHeaderValue(ctx context.Context, name, value string) {
 	f := filterFromContext(ctx)
 	f.reqHeaders = setHeader(f.reqHeaders, name, value)
 }
 
-func (host) AddRequestHeader(ctx context.Context, name, value string) {
+func (host) AddRequestHeaderValue(ctx context.Context, name, value string) {
 	f := filterFromContext(ctx)
 	f.respHeaders = addHeader(f.respHeaders, name, value)
 }
@@ -91,15 +87,11 @@ func (host) GetRequestTrailerNames(ctx context.Context) (names []string) {
 	return // no-op because trailers are unsupported: mosn/mosn#2145
 }
 
-func (host) GetRequestTrailer(ctx context.Context, name string) (value string, ok bool) {
+func (host) GetRequestTrailerValues(ctx context.Context, name string) (values []string) {
 	return // no-op because trailers are unsupported: mosn/mosn#2145
 }
 
-func (host) GetRequestTrailers(ctx context.Context, name string) (values []string) {
-	return // no-op because trailers are unsupported: mosn/mosn#2145
-}
-
-func (host) AddRequestTrailer(ctx context.Context, name, value string) {
+func (host) AddRequestTrailerValue(ctx context.Context, name, value string) {
 	// panic because the user should know that trailers are not supported.
 	panic("trailers unsupported: mosn/mosn#2145")
 }
@@ -109,7 +101,7 @@ func (host) RemoveRequestTrailer(ctx context.Context, name string) {
 	panic("trailers unsupported: mosn/mosn#2145")
 }
 
-func (host) SetRequestTrailer(ctx context.Context, name, value string) {
+func (host) SetRequestTrailerValue(ctx context.Context, name, value string) {
 	// panic because the user should know that trailers are not supported.
 	panic("trailers unsupported: mosn/mosn#2145")
 }
@@ -182,20 +174,16 @@ func (host) GetResponseHeaderNames(ctx context.Context) (names []string) {
 	return getHeaderNames(filterFromContext(ctx).respHeaders)
 }
 
-func (host) GetResponseHeader(ctx context.Context, name string) (string, bool) {
-	return getHeader(filterFromContext(ctx).respHeaders, name)
-}
-
-func (host) GetResponseHeaders(ctx context.Context, name string) []string {
+func (host) GetResponseHeaderValues(ctx context.Context, name string) []string {
 	return getHeaders(filterFromContext(ctx).respHeaders, name)
 }
 
-func (host) SetResponseHeader(ctx context.Context, name, value string) {
+func (host) SetResponseHeaderValue(ctx context.Context, name, value string) {
 	f := filterFromContext(ctx)
 	f.respHeaders = setHeader(f.respHeaders, name, value)
 }
 
-func (host) AddResponseHeader(ctx context.Context, name, value string) {
+func (host) AddResponseHeaderValue(ctx context.Context, name, value string) {
 	f := filterFromContext(ctx)
 	f.respHeaders = addHeader(f.respHeaders, name, value)
 }
@@ -219,20 +207,16 @@ func (host) GetResponseTrailerNames(ctx context.Context) (names []string) {
 	return // no-op because trailers are unsupported: mosn/mosn#2145
 }
 
-func (host) GetResponseTrailer(ctx context.Context, name string) (value string, ok bool) {
+func (host) GetResponseTrailerValues(ctx context.Context, name string) (values []string) {
 	return // no-op because trailers are unsupported: mosn/mosn#2145
 }
 
-func (host) GetResponseTrailers(ctx context.Context, name string) (values []string) {
-	return // no-op because trailers are unsupported: mosn/mosn#2145
-}
-
-func (host) SetResponseTrailer(ctx context.Context, name, value string) {
+func (host) SetResponseTrailerValue(ctx context.Context, name, value string) {
 	// panic because the user should know that trailers are not supported.
 	panic("trailers unsupported: mosn/mosn#2145")
 }
 
-func (host) AddResponseTrailer(ctx context.Context, name, value string) {
+func (host) AddResponseTrailerValue(ctx context.Context, name, value string) {
 	// panic because the user should know that trailers are not supported.
 	panic("trailers unsupported: mosn/mosn#2145")
 }
@@ -276,13 +260,6 @@ func getHeaderNames(headers api.HeaderMap) (names []string) {
 		return true
 	})
 	return
-}
-
-func getHeader(headers api.HeaderMap, name string) (string, bool) {
-	if headers == nil {
-		return "", false
-	}
-	return headers.Get(name)
 }
 
 func getHeaders(headers api.HeaderMap, name string) (values []string) {
