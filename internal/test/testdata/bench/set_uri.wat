@@ -1,4 +1,3 @@
-;; $ wat2wasm --debug-names set_uri.wat
 (module $set_uri
   (import "http-handler" "set_uri"
     (func $set_uri (param i32 i32)))

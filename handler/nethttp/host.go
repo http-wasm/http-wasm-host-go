@@ -106,22 +106,8 @@ func (host) GetRequestHeaderNames(ctx context.Context) (names []string) {
 	return
 }
 
-// GetRequestHeader implements the same method as documented on handler.Host.
-func (host) GetRequestHeader(ctx context.Context, name string) (string, bool) {
-	r := requestStateFromContext(ctx).r
-	if textproto.CanonicalMIMEHeaderKey(name) == "Host" { // special-case the host header.
-		v := r.Host
-		return v, v != ""
-	}
-	if values := r.Header.Values(name); len(values) == 0 {
-		return "", false
-	} else {
-		return values[0], true
-	}
-}
-
-// GetRequestHeaders implements the same method as documented on handler.Host.
-func (host) GetRequestHeaders(ctx context.Context, name string) []string {
+// GetRequestHeaderValues implements the same method as documented on handler.Host.
+func (host) GetRequestHeaderValues(ctx context.Context, name string) []string {
 	r := requestStateFromContext(ctx).r
 	if textproto.CanonicalMIMEHeaderKey(name) == "Host" { // special-case the host header.
 		return []string{r.Host}
@@ -129,14 +115,14 @@ func (host) GetRequestHeaders(ctx context.Context, name string) []string {
 	return r.Header.Values(name)
 }
 
-// SetRequestHeader implements the same method as documented on handler.Host.
-func (host) SetRequestHeader(ctx context.Context, name, value string) {
+// SetRequestHeaderValue implements the same method as documented on handler.Host.
+func (host) SetRequestHeaderValue(ctx context.Context, name, value string) {
 	s := requestStateFromContext(ctx)
 	s.r.Header.Set(name, value)
 }
 
-// AddRequestHeader implements the same method as documented on handler.Host.
-func (host) AddRequestHeader(ctx context.Context, name, value string) {
+// AddRequestHeaderValue implements the same method as documented on handler.Host.
+func (host) AddRequestHeaderValue(ctx context.Context, name, value string) {
 	s := requestStateFromContext(ctx)
 	s.r.Header.Add(name, value)
 }
@@ -161,32 +147,30 @@ func (host) RequestBodyWriter(ctx context.Context) io.Writer {
 	return &b
 }
 
-// GetRequestTrailerNames implements the same method as documented on handler.Host.
+// GetRequestTrailerNames implements the same method as documented on
+// handler.Host.
 func (host) GetRequestTrailerNames(ctx context.Context) (names []string) {
 	header := requestStateFromContext(ctx).w.Header()
 	return trailerNames(header)
 }
 
-// GetRequestTrailer implements the same method as documented on handler.Host.
-func (host) GetRequestTrailer(ctx context.Context, name string) (string, bool) {
-	header := requestStateFromContext(ctx).w.Header()
-	return getTrailer(header, name)
-}
-
-// GetRequestTrailers implements the same method as documented on handler.Host.
-func (host) GetRequestTrailers(ctx context.Context, name string) []string {
+// GetRequestTrailerValues implements the same method as documented on
+// handler.Host.
+func (host) GetRequestTrailerValues(ctx context.Context, name string) []string {
 	header := requestStateFromContext(ctx).w.Header()
 	return getTrailers(header, name)
 }
 
-// SetRequestTrailer implements the same method as documented on handler.Host.
-func (host) SetRequestTrailer(ctx context.Context, name, value string) {
+// SetRequestTrailerValue implements the same method as documented on
+// handler.Host.
+func (host) SetRequestTrailerValue(ctx context.Context, name, value string) {
 	header := requestStateFromContext(ctx).w.Header()
 	setTrailer(header, name, value)
 }
 
-// AddRequestTrailer implements the same method as documented on handler.Host.
-func (host) AddRequestTrailer(ctx context.Context, name, value string) {
+// AddRequestTrailerValue implements the same method as documented on
+// handler.Host.
+func (host) AddRequestTrailerValue(ctx context.Context, name, value string) {
 	header := requestStateFromContext(ctx).w.Header()
 	addTrailer(header, name, value)
 }
@@ -222,7 +206,8 @@ func (host) SetStatusCode(ctx context.Context, statusCode uint32) {
 	}
 }
 
-// GetResponseHeaderNames implements the same method as documented on handler.Host.
+// GetResponseHeaderNames implements the same method as documented on
+// handler.Host.
 func (host) GetResponseHeaderNames(ctx context.Context) (names []string) {
 	w := requestStateFromContext(ctx).w
 
@@ -241,35 +226,29 @@ func (host) GetResponseHeaderNames(ctx context.Context) (names []string) {
 	return
 }
 
-// GetResponseHeader implements the same method as documented on handler.Host.
-func (host) GetResponseHeader(ctx context.Context, name string) (string, bool) {
-	w := requestStateFromContext(ctx).w
-	if values := w.Header().Values(name); len(values) == 0 {
-		return "", false
-	} else {
-		return values[0], true
-	}
-}
-
-// GetResponseHeaders implements the same method as documented on handler.Host.
-func (host) GetResponseHeaders(ctx context.Context, name string) []string {
+// GetResponseHeaderValues implements the same method as documented on
+// handler.Host.
+func (host) GetResponseHeaderValues(ctx context.Context, name string) []string {
 	w := requestStateFromContext(ctx).w
 	return w.Header().Values(name)
 }
 
-// SetResponseHeader implements the same method as documented on handler.Host.
-func (host) SetResponseHeader(ctx context.Context, name, value string) {
+// SetResponseHeaderValue implements the same method as documented on
+// handler.Host.
+func (host) SetResponseHeaderValue(ctx context.Context, name, value string) {
 	s := requestStateFromContext(ctx)
 	s.w.Header().Set(name, value)
 }
 
-// AddResponseHeader implements the same method as documented on handler.Host.
-func (host) AddResponseHeader(ctx context.Context, name, value string) {
+// AddResponseHeaderValue implements the same method as documented on
+// handler.Host.
+func (host) AddResponseHeaderValue(ctx context.Context, name, value string) {
 	s := requestStateFromContext(ctx)
 	s.w.Header().Add(name, value)
 }
 
-// RemoveResponseHeader implements the same method as documented on handler.Host.
+// RemoveResponseHeader implements the same method as documented on
+// handler.Host.
 func (host) RemoveResponseHeader(ctx context.Context, name string) {
 	s := requestStateFromContext(ctx)
 	s.w.Header().Del(name)
@@ -293,32 +272,30 @@ func (host) ResponseBodyWriter(ctx context.Context) io.Writer {
 	}
 }
 
-// GetResponseTrailerNames implements the same method as documented on handler.Host.
+// GetResponseTrailerNames implements the same method as documented on
+// handler.Host.
 func (host) GetResponseTrailerNames(ctx context.Context) (names []string) {
 	header := requestStateFromContext(ctx).w.Header()
 	return trailerNames(header)
 }
 
-// GetResponseTrailer implements the same method as documented on handler.Host.
-func (host) GetResponseTrailer(ctx context.Context, name string) (string, bool) {
-	header := requestStateFromContext(ctx).w.Header()
-	return getTrailer(header, name)
-}
-
-// GetResponseTrailers implements the same method as documented on handler.Host.
-func (host) GetResponseTrailers(ctx context.Context, name string) []string {
+// GetResponseTrailerValues implements the same method as documented on
+// handler.Host.
+func (host) GetResponseTrailerValues(ctx context.Context, name string) []string {
 	header := requestStateFromContext(ctx).w.Header()
 	return getTrailers(header, name)
 }
 
-// SetResponseTrailer implements the same method as documented on handler.Host.
-func (host) SetResponseTrailer(ctx context.Context, name, value string) {
+// SetResponseTrailerValue implements the same method as documented on
+// handler.Host.
+func (host) SetResponseTrailerValue(ctx context.Context, name, value string) {
 	header := requestStateFromContext(ctx).w.Header()
 	setTrailer(header, name, value)
 }
 
-// AddResponseTrailer implements the same method as documented on handler.Host.
-func (host) AddResponseTrailer(ctx context.Context, name, value string) {
+// AddResponseTrailerValue implements the same method as documented on
+// handler.Host.
+func (host) AddResponseTrailerValue(ctx context.Context, name, value string) {
 	header := requestStateFromContext(ctx).w.Header()
 	addTrailer(header, name, value)
 }
@@ -344,14 +321,6 @@ func trailerNames(header http.Header) (names []string) {
 
 func getTrailers(header http.Header, name string) []string {
 	return header.Values(http.TrailerPrefix + name)
-}
-
-func getTrailer(header http.Header, name string) (string, bool) {
-	if values := getTrailers(header, name); len(values) == 0 {
-		return "", false
-	} else {
-		return values[0], true
-	}
 }
 
 func setTrailer(header http.Header, name string, value string) {

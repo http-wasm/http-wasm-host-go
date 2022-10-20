@@ -92,7 +92,6 @@ func Example_auth() {
 	// Unauthorized
 	// Www-Authenticate: Basic realm="test"
 	// Unauthorized
-	// Www-Authenticate: Basic realm="test"
 	// OK
 	// Unauthorized
 }

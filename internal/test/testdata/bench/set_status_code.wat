@@ -1,4 +1,3 @@
-;; $ wat2wasm --debug-names set_status_code.wat
 (module $set_status_code
   (import "http-handler" "set_status_code"
     (func $set_status_code (param i32)))

@@ -15,14 +15,17 @@
   ;; next dispatches control to the next handler on the host.
   (import "http-handler" "next" (func $next))
 
-  ;; set_response_header sets a response header from a name and value read
-  ;; from memory
-  (import "http-handler" "set_response_header" (func $set_response_header
+  ;; set_header_value overwrites a header of the given $kind and $name with a
+  ;; single value.
+  (import "http-handler" "set_header_value" (func $set_header_value
+    (param $kind i32)
     (param $name i32) (param $name_len i32)
     (param $value i32) (param $value_len i32)))
 
-  ;; write_response_body overwrites the response body with a value read from memory.
-  (import "http-handler" "write_response_body" (func $write_response_body
+  ;; write_body reads $buf_len bytes at memory offset `buf` and writes them to
+  ;; the pending $kind body.
+  (import "http-handler" "write_body" (func $write_body
+    (param $kind i32)
     (param $buf i32) (param $buf_len i32)))
 
   ;; http-wasm guests are required to export "memory", so that imported
@@ -84,12 +87,14 @@
             (return))))) ;; dispatch with the stripped path.
 
     ;; Otherwise, serve a static response.
-    (call $set_response_header
+    (call $set_header_value
+      (i32.const 1) ;; header_kind_response
       (global.get $content_type_name)
       (global.get $content_type_name_len)
       (global.get $content_type_value)
       (global.get $content_type_value_len))
-    (call $write_response_body
+    (call $write_body
+      (i32.const 1) ;; body_kind_response
       (global.get $body)
       (global.get $body_len)))
 

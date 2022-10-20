@@ -3,21 +3,22 @@
 ;; Most users will prefer a higher-level language such as C, Rust or TinyGo.
 (module $auth
 
-  ;; get_request_header writes a header value to memory if it exists and isn't
-  ;; larger than the buffer size limit. The result is `1<<32|value_len` or zero
-  ;; if the header doesn't exist. `value_len` is the actual value length in
-  ;; bytes.
-  (import "http-handler" "get_request_header" (func $get_request_header
+  ;; get_header_values writes all header names of the given $kind and $name,
+  ;; NUL-terminated, to memory if the encoded length isn't larger than
+  ;; $buf_limit. The result is regardless of whether memory was written.
+  (import "http-handler" "get_header_values" (func $get_header_values
+    (param $kind i32)
     (param $name i32) (param $name_len i32)
     (param $buf i32) (param $buf_limit i32)
-    (result (; 0 or 1 << 32| len ;) i64)))
+    (result (; count << 32| len ;) i64)))
 
   ;; next dispatches control to the next handler on the host.
   (import "http-handler" "next" (func $next))
 
-  ;; set_response_header sets a response header from a name and value read
-  ;; from memory
-  (import "http-handler" "set_response_header" (func $set_response_header
+  ;; set_header_value overwrites a header of the given $kind and $name with a
+  ;; single value.
+  (import "http-handler" "set_header_value" (func $set_header_value
+    (param $kind i32)
     (param $name i32) (param $name_len i32)
     (param $value i32) (param $value_len i32)))
 
@@ -26,7 +27,7 @@
     (param $status_code i32)))
 
   ;; http-wasm guests are required to export "memory", so that imported
-  ;; functions like "get_request_header" can read memory.
+  ;; functions like "get_header" can read memory.
   (memory (export "memory") 1 1 (; 1 page==64KB ;))
 
   ;; buf is an arbitrary area to write data.
@@ -37,17 +38,18 @@
   (global $authorization_name_len i32 (i32.const 13))
 
   ;; We expect the username "Aladdin" and password "open sesame".
-  (global $authorization_value i32 (i32.const 64))
-  (data (i32.const 64) "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==")
-  (global $authorization_value_len i32 (i32.const 34))
+  (global $authorization_values i32 (i32.const 64))
+  (data (i32.const 64) "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==\00")
+  (global $authorization_values_len i32 (i32.const 35))
 
   ;; get_authorization reads the Authorization header into memory
-  (func $get_authorization (result (; $exists_length ;) i64)
-    (call $get_request_header
+  (func $get_authorization (result (; $count_length ;) i64)
+    (call $get_header_values
+      (i32.const 0) ;; header_kind_request
       (global.get $authorization_name)
       (global.get $authorization_name_len)
       (global.get $buf)
-      (global.get $authorization_value_len)))
+      (global.get $authorization_values_len)))
 
   (global $authenticate_name i32 (i32.const 128))
   (data (i32.const 128) "WWW-Authenticate")
@@ -59,7 +61,8 @@
 
   ;; set_authenticate adds the WWW-Authenticate header
   (func $set_authenticate
-    (call $set_response_header
+    (call $set_header_value
+      (i32.const 1) ;; header_kind_response
       (global.get $authenticate_name)
       (global.get $authenticate_name_len)
       (global.get $authenticate_value)
@@ -68,30 +71,38 @@
   ;; handle tries BASIC authentication and dispatches to "next" or returns 401.
   (func $handle (export "handle")
 
-    (local $authorization_len i32)
+    (local $result i64)
+    (local $count i32)
+    (local $len i32)
     (local $authorization_eq i32)
 
-    (local.set $authorization_len
-      (i32.wrap_i64 (call $get_authorization)))
+    (local.set $result (call $get_authorization))
 
-    (if (i32.eqz (local.get $authorization_len))
-      (then ;; authorization required, but no header
+    ;; count = uint32(result >> 32)
+    (local.set $count
+      (i32.wrap_i64 (i64.shr_u (local.get $result) (i64.const 32))))
+
+    (if (i32.ne (local.get $count) (i32.const 1))
+      (then ;; multiple headers, invalid
         (call $set_authenticate)
         (call $set_status_code (i32.const 401))
         (return)))
 
-    (if (i32.ne (global.get $authorization_value_len) (local.get $authorization_len))
-      (then ;; authorization_value_length != i32($header_value)
+    ;; len = uint32(result)
+    (local.set $len (i32.wrap_i64 (local.get $result)))
+
+    (if (i32.ne (global.get $authorization_values_len) (local.get $len))
+      (then ;; authorization_values_length != i32($header_value)
         (call $set_status_code (i32.const 401))
         (return)))
 
     (local.set $authorization_eq (call $memeq
       (global.get $buf)
-      (global.get $authorization_value)
-      (global.get $authorization_value_len)))
+      (global.get $authorization_values)
+      (global.get $authorization_values_len)))
 
     (if (i32.eqz (local.get $authorization_eq))
-      (then ;; authenticate_value != authorization_value
+      (then ;; authenticate_value != authorization_values
         (call $set_status_code (i32.const 401)))
       (else ;; authorization passed! call the next handler
         (call $next))))

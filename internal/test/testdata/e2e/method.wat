@@ -7,7 +7,8 @@
   (import "http-handler" "set_method" (func $set_method
     (param $method i32) (param $method_len i32)))
 
-  (import "http-handler" "write_request_body" (func $write_request_body
+  (import "http-handler" "write_body" (func $write_body
+    (param $kind i32)
     (param $buf i32) (param $buf_len i32)))
 
   (import "http-handler" "next" (func $next))
@@ -33,7 +34,9 @@
     (call $set_method (global.get $post) (global.get $post_len))
 
     ;; write the method to the request body.
-    (call $write_request_body (global.get $buf) (local.get $len))
+    (call $write_body
+      (i32.const 0) ;; body_kind_request
+      (global.get $buf) (local.get $len))
 
     ;; call the next handler which verifies state
     (call $next))

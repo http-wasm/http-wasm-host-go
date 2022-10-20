@@ -1,5 +1,82 @@
 package handler
 
+// CountLen describes a possible empty sequence of NUL-terminated strings. For
+// compatability with WebAssembly Core Specification 1.0, two uint32 values are
+// combined into a single uint64 in the following order:
+//
+//   - count: zero if the sequence is empty, or the count of strings.
+//   - len: possibly zero length of the sequence, including NUL-terminators.
+//
+// If the uint64 result is zero, the sequence is empty. Otherwise, you need to
+// split the results like so.
+//
+//   - count: `uint32(countLen >> 32)`
+//   - len: `uint32(countLen)`
+//
+// # Examples
+//
+//   - "": 0<<32|0 or simply zero.
+//   - "Accept\0": 1<<32|7
+//   - "Content-Type\0Content-Length\0": 2<<32|28
+type CountLen = uint64
+
+type BodyKind = uint32
+
+const (
+	// BodyKindRequest represents an operation on an HTTP request body.
+	//
+	// # Notes on FuncReadBody
+	//
+	// FeatureBufferResponse is required to read the request body without
+	// consuming it. To enable it, call FuncEnableFeatures before FuncNext.
+	// Otherwise, a downstream handler may panic attempting to read a request
+	// body already read upstream.
+	//
+	// # Notes on FuncWriteBody
+	//
+	// The first call to FuncWriteBody in FuncHandle overwrites any request
+	// body.
+	BodyKindRequest BodyKind = iota
+
+	// BodyKindResponse represents an operation on an HTTP request body.
+	//
+	// # Notes on FuncReadBody
+	//
+	// FeatureBufferResponse is required to read the response body produced by
+	// FuncNext. To enable it, call FuncEnableFeatures beforehand. Otherwise,
+	// a handler may panic calling FuncReadBody with BodyKindResponse.
+	//
+	// # Notes on FuncWriteBody
+	//
+	// The first call to FuncWriteBody in FuncHandle or after FuncNext
+	// overwrites any response body.
+	BodyKindResponse
+)
+
+type HeaderKind = uint32
+
+const (
+	// HeaderKindRequest represents an operation on HTTP request headers.
+	HeaderKindRequest HeaderKind = iota
+
+	// HeaderKindResponse represents an operation on HTTP response headers.
+	HeaderKindResponse
+
+	// HeaderKindRequestTrailers represents an operation on HTTP request
+	// trailers (trailing headers). This requires FeatureTrailers.
+	//
+	// To enable FeatureTrailers, call FuncEnableFeatures prior to FuncNext.
+	// Doing otherwise, may result in a panic.
+	HeaderKindRequestTrailers
+
+	// HeaderKindResponseTrailers represents an operation on HTTP response
+	// trailers (trailing headers). This requires FeatureTrailers.
+	//
+	// To enable FeatureTrailers, call FuncEnableFeatures prior to FuncNext.
+	// Doing otherwise, may result in a panic.
+	HeaderKindResponseTrailers
+)
+
 const (
 	// HostModule is the WebAssembly module name of the ABI this middleware
 	// implements.
@@ -83,48 +160,42 @@ const (
 	// TODO: document on http-wasm-abi
 	FuncGetProtocolVersion = "get_protocol_version"
 
-	// FuncGetRequestHeaderNames writes all header names, NUL-terminated, to
-	// memory if the encoded length isn't larger than `buf-limit`. The result
-	// is the encoded length in bytes. Ex. "Accept\0Date\0"
+	// FuncGetHeaderNames writes all header names for the given HeaderKind,
+	// NUL-terminated, to memory if the encoded length isn't larger than
+	// `buf-limit`. The result is regardless of whether memory was written.
 	//
 	// TODO: document on http-wasm-abi
-	FuncGetRequestHeaderNames = "get_request_header_names"
+	FuncGetHeaderNames = "get_header_names"
 
-	// FuncGetRequestHeader writes a header value to memory if it exists and
-	// isn't larger than `buf-limit`. The result is `1<<32|len`, where `len` is
-	// the bytes written, or zero if the header doesn't exist.
-	//
-	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#get-request-header
-	FuncGetRequestHeader = "get_request_header"
-
-	// FuncGetRequestHeaders writes all header values, NUL-terminated, to
-	// memory if the encoded length isn't larger than `buf-limit`. The result
-	// is the encoded length in bytes. Ex. "val1\0val2\0" == 10
+	// FuncGetHeaderValues writes all header names of the given HeaderKind and
+	// name, NUL-terminated, to memory if the encoded length isn't larger than
+	// `buf-limit`. The result is regardless of whether memory was written.
 	//
 	// TODO: document on http-wasm-abi
-	FuncGetRequestHeaders = "get_request_headers"
+	FuncGetHeaderValues = "get_header_values"
 
-	// FuncSetRequestHeader overwrites a request header with a given name to
-	// a value read from memory.
+	// FuncSetHeaderValue overwrites a header of the given HeaderKind and name
+	// with a single value.
 	//
 	// TODO: document on http-wasm-abi
-	FuncSetRequestHeader = "set_request_header"
+	FuncSetHeaderValue = "set_header_value"
 
-	// FuncAddRequestHeader adds a request header with a given name using a
-	// value read from memory.
+	// FuncAddHeaderValue adds a single value for the given HeaderKind and
+	// name.
 	//
 	// TODO: document on http-wasm-abi
-	FuncAddRequestHeader = "add_request_header"
+	FuncAddHeaderValue = "add_header_value"
 
-	// FuncRemoveRequestHeader removes any values for the given header name.
+	// FuncRemoveHeader removes any values for the given HeaderKind and name.
 	//
 	// TODO: document on http-wasm-abi
-	FuncRemoveRequestHeader = "remove_request_header"
+	FuncRemoveHeader = "remove_header"
 
-	// FuncReadRequestBody reads up to `buf_limit` bytes remaining in the body
-	// into memory at offset `buf`. A zero `buf_limit` will panic. The result
-	// is `0 or EOF(1) << 32|len`, where `len` is the possibly zero length of
-	// bytes read.
+	// FuncReadBody reads up to `buf_limit` bytes remaining in the BodyKind
+	// body into memory at offset `buf`. A zero `buf_limit` will panic.
+	//
+	// The result is `0 or EOF(1) << 32|len`, where `len` is the length in bytes
+	// read.
 	//
 	// `EOF` means the body is exhausted, and future calls return `1<<32|0`
 	// (4294967296). `EOF` is not an error, so process `len` bytes returned
@@ -134,70 +205,17 @@ const (
 	// reads what's remaining in the stream, as opposed to starting from zero.
 	// Callers do not have to exhaust the stream until `EOF`.
 	//
-	// To allow downstream handlers to read the original request body, enable
-	// FeatureBufferRequest via FuncEnableFeatures. Otherwise, create a
-	// response inside the guest, or write an appropriate body via
-	// FuncWriteRequestBody before calling FuncNext.
-	//
 	// TODO: document on http-wasm-abi
-	FuncReadRequestBody = "read_request_body"
+	FuncReadBody = "read_body"
 
-	// FuncWriteRequestBody reads `buf_len` bytes at memory offset `buf` and
-	// writes them to the pending request body. The first call overwrites any
-	// request body.
+	// FuncWriteBody reads `buf_len` bytes at memory offset `buf` and writes
+	// them to the pending BodyKind body.
 	//
 	// Unlike `set_XXX` functions, this function is stateful, so repeated calls
 	// write to the current stream.
 	//
-	// Note: This can only be called before FuncNext.
 	// TODO: document on http-wasm-abi
-	FuncWriteRequestBody = "write_request_body"
-
-	// FuncGetRequestTrailerNames writes all trailing header (trailer) names,
-	// NUL-terminated, to memory if the encoded length isn't larger than
-	// `buf-limit`. The result is the encoded length in bytes.
-	// Ex. "ChecksumSHA256\0"
-	//
-	// TODO: document on http-wasm-abi
-	FuncGetRequestTrailerNames = "get_request_trailer_names"
-
-	// FuncGetRequestTrailer writes a trailing header (trailer) value to memory
-	// if it exists and isn't larger than `buf-limit`. The result is
-	// `1<<32|len`, where `len` is the bytes written, or zero if the trailer
-	// doesn't exist.
-	//
-	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#get-request-trailer
-	FuncGetRequestTrailer = "get_request_trailer"
-
-	// FuncGetRequestTrailers writes all trailing header (trailer) values,
-	// NUL-terminated, to memory if the encoded length isn't larger than
-	// `buf-limit`. The result is the encoded length in bytes.
-	// Ex. "val1\0val2\0" == 10
-	//
-	// Note: `len` is the encoded length: "val\0" == 4 or "val1\0val2\0" == 10
-	//
-	// TODO: document on http-wasm-abi
-	FuncGetRequestTrailers = "get_request_trailers"
-
-	// FuncSetRequestTrailer overwrites a request trailer with a given name to
-	// a value read from memory.
-	//
-	// TODO: document on http-wasm-abi
-	FuncSetRequestTrailer = "set_request_trailer"
-
-	// FuncAddRequestTrailer adds a trailing header (trailer) with a given name
-	// using a value read from memory.
-	//
-	// TODO: document on http-wasm-abi
-	FuncAddRequestTrailer = "add_request_trailer"
-
-	// FuncRemoveRequestTrailer removes any values for the given trailer name.
-	//
-	// To use this function after FuncNext, set FeatureBufferRequest via
-	// FuncEnableFeatures. Otherwise, this can be called when FuncNext wasn't.
-	//
-	// TODO: document on http-wasm-abi
-	FuncRemoveRequestTrailer = "remove_request_trailer"
+	FuncWriteBody = "write_body"
 
 	// FuncNext calls a downstream handler and blocks until it is finished
 	// processing.
@@ -227,150 +245,4 @@ const (
 	//
 	// TODO: document on http-wasm-abi
 	FuncSetStatusCode = "set_status_code"
-
-	// FuncGetResponseHeaderNames writes all header names, NUL-terminated, to
-	// memory if the encoded length isn't larger than `buf-limit`. The result
-	// is the encoded length in bytes. Ex. "Content-Length\0Content-Type\0"
-	//
-	// TODO: document on http-wasm-abi
-	FuncGetResponseHeaderNames = "get_response_header_names"
-
-	// FuncGetResponseHeader writes a header value to memory if it exists and
-	// isn't larger than `buf-limit`. The result is `1<<32|len`, where `len` is
-	// the bytes written, or zero if the header doesn't exist. This requires
-	// FeatureBufferResponse.
-	//
-	// To enable FeatureBufferResponse, FuncEnableFeatures prior to FuncNext.
-	// Doing otherwise, or calling before FuncNext will panic.
-	//
-	// TODO: document on http-wasm-abi
-	FuncGetResponseHeader = "get_response_header"
-
-	// FuncGetResponseHeaders writes all header values, NUL-terminated, to
-	// memory if the encoded length isn't larger than `buf-limit`. The result
-	// is the encoded length in bytes. Ex. "val1\0val2\0" == 10
-	//
-	// To enable FeatureBufferResponse, FuncEnableFeatures prior to FuncNext.
-	// Doing otherwise, or calling before FuncNext will panic.
-	//
-	// Note: `len` is the encoded length: "val\0" == 4 or "val1\0val2\0" == 10
-	//
-	// TODO: document on http-wasm-abi
-	FuncGetResponseHeaders = "get_response_headers"
-
-	// FuncSetResponseHeader overwrites a response header with a given name to
-	// a value read from memory.
-	//
-	// To use this function after FuncNext, set FeatureBufferResponse via
-	// FuncEnableFeatures. Otherwise, this can be called when FuncNext wasn't.
-	//
-	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#set-response-header
-	FuncSetResponseHeader = "set_response_header"
-
-	// FuncAddResponseHeader adds a response header with a given name using a
-	// value read from memory.
-	//
-	// To use this function after FuncNext, set FeatureBufferResponse via
-	// FuncEnableFeatures. Otherwise, this can be called when FuncNext wasn't.
-	//
-	// TODO: document on http-wasm-abi
-	FuncAddResponseHeader = "add_response_header"
-
-	// FuncRemoveResponseHeader removes any values for the given header name.
-	//
-	// To use this function after FuncNext, set FeatureBufferResponse via
-	// FuncEnableFeatures. Otherwise, this can be called when FuncNext wasn't.
-	//
-	// TODO: document on http-wasm-abi
-	FuncRemoveResponseHeader = "remove_response_header"
-
-	// FuncReadResponseBody reads up to `buf_limit` bytes remaining in the body
-	// into memory at offset `buf`. A zero `buf_limit` will panic. The result
-	// is `0 or EOF(1) << 32|len`, where `len` is the possibly zero length of
-	// bytes read.
-	//
-	// `EOF` means the body is exhausted, and future calls return `1<<32|0`
-	// (4294967296). `EOF` is not an error, so process `len` bytes returned
-	// regardless of `EOF`.
-	//
-	// Unlike `get_XXX` functions, this function is stateful, so repeated calls
-	// reads what's remaining in the stream, as opposed to starting from zero.
-	// Callers do not have to exhaust the stream until `EOF`.
-	//
-	// Note: This function requires FeatureBufferResponse. To enable it, call
-	// FuncEnableFeatures prior to FuncNext. Doing otherwise, or calling before
-	// FuncNext will panic.
-	//
-	// TODO: document on http-wasm-abi
-	FuncReadResponseBody = "read_response_body"
-
-	// FuncWriteResponseBody reads `buf_len` bytes at memory offset `buf` and
-	// writes them to the pending response body. The first call to this in
-	// FuncHandle or after FuncNext overwrites any response body.
-	//
-	// Unlike `set_XXX` functions, this function is stateful, so repeated calls
-	// write to the current stream.
-	//
-	// Note: To use this function after FuncNext, set FeatureBufferResponse via
-	// FuncEnableFeatures. Otherwise, this can be called when FuncNext wasn't.
-	// TODO: document on http-wasm-abi
-	FuncWriteResponseBody = "write_response_body"
-
-	// FuncGetResponseTrailerNames writes all trailing header (trailer) names,
-	// NUL-terminated, to memory if the encoded length isn't larger than
-	// `buf-limit`. The result is the encoded length in bytes.
-	// Ex. "grpc-status\0"
-	//
-	// TODO: document on http-wasm-abi
-	FuncGetResponseTrailerNames = "get_response_trailer_names"
-
-	// FuncGetResponseTrailer writes a trailing header (trailer) value to
-	// memory if it exists and isn't larger than `buf-limit`. The result is
-	// `1<<32|len`, where `len` is the bytes written, or zero if the trailer
-	// doesn't exist. This requires FeatureBufferResponse.
-	//
-	// To enable FeatureBufferResponse, FuncEnableFeatures prior to FuncNext.
-	// Doing otherwise, or calling before FuncNext will panic.
-	//
-	// TODO: document on http-wasm-abi
-	FuncGetResponseTrailer = "get_response_trailer"
-
-	// FuncGetResponseTrailers writes all trailing header (trailer) values,
-	// NUL-terminated, to memory if the encoded length isn't larger than
-	// `buf-limit`. The result is the encoded length in bytes.
-	// Ex. "val1\0val2\0" == 10
-	//
-	// To enable FeatureBufferResponse, FuncEnableFeatures prior to FuncNext.
-	// Doing otherwise, or calling before FuncNext will panic.
-	//
-	// Note: `len` is the encoded length: "val\0" == 4 or "val1\0val2\0" == 10
-	//
-	// TODO: document on http-wasm-abi
-	FuncGetResponseTrailers = "get_response_trailers"
-
-	// FuncSetResponseTrailer overwrites a trailing header (trailer) with a
-	// given name to a value read from memory.
-	//
-	// Note: To use this function after FuncNext, set FeatureBufferResponse via
-	// FuncEnableFeatures. Otherwise, this can be called when FuncNext wasn't.
-	//
-	// TODO: document on http-wasm-abi
-	FuncSetResponseTrailer = "set_response_trailer"
-
-	// FuncAddResponseTrailer adds a trailing header (trailer) with a given
-	// name using a value read from memory.
-	//
-	// Note: To use this function after FuncNext, set FeatureBufferResponse via
-	// FuncEnableFeatures. Otherwise, this can be called when FuncNext wasn't.
-	//
-	// TODO: document on http-wasm-abi
-	FuncAddResponseTrailer = "add_response_trailer"
-
-	// FuncRemoveResponseTrailer removes any values for the given trailer name.
-	//
-	// To use this function after FuncNext, set FeatureBufferResponse via
-	// FuncEnableFeatures. Otherwise, this can be called when FuncNext wasn't.
-	//
-	// TODO: document on http-wasm-abi
-	FuncRemoveResponseTrailer = "remove_response_trailer"
 )
