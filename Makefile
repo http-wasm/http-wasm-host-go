@@ -5,7 +5,7 @@ golangci_lint := github.com/golangci/golangci-lint/cmd/golangci-lint@v1.50.0
 testdata:
 	@$(MAKE) build.wat
 
-wat_sources := $(wildcard internal/test/testdata/*/*.wat)
+wat_sources := $(wildcard examples/*.wat) $(wildcard internal/test/testdata/*/*.wat)
 build.wat: $(wat_sources)
 	@for f in $^; do \
 	    wat2wasm -o $$(echo $$f | sed -e 's/\.wat/\.wasm/') --debug-names $$f; \
@@ -15,6 +15,10 @@ build.wat: $(wat_sources)
 test:
 	@go test -v ./...
 	@cd handler/mosn && go test -v ./...
+
+.PHONY: bench
+bench:
+	@(cd handler/nethttp; go test -run=NONE -bench=. .)
 
 golangci_lint_path := $(shell go env GOPATH)/bin/golangci-lint
 

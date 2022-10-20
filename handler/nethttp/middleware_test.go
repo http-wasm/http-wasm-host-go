@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/binary"
 	"io"
-	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -49,7 +48,7 @@ func TestConfig(t *testing.T) {
 					t.Fatal(err)
 				}
 				if want, have := requestBody, string(body); want != have {
-					log.Panicf("unexpected request body, want: %q, have: %q", want, have)
+					t.Fatalf("unexpected request body, want: %q, have: %q", want, have)
 				}
 				r.Header.Set("Content-Type", "application/json")
 				w.Write([]byte(responseBody)) // nolint
@@ -70,14 +69,14 @@ func TestConfig(t *testing.T) {
 				t.Fatal(err)
 			}
 			if want, have := responseBody, string(body); want != have {
-				log.Panicf("unexpected response body, want: %q, have: %q", want, have)
+				t.Fatalf("unexpected response body, want: %q, have: %q", want, have)
 			}
 		})
 	}
 }
 
-func TestGetMethod(t *testing.T) {
-	mw, err := wasm.NewMiddleware(testCtx, test.BinTestMethod)
+func TestMethod(t *testing.T) {
+	mw, err := wasm.NewMiddleware(testCtx, test.BinE2EMethod)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,14 +84,14 @@ func TestGetMethod(t *testing.T) {
 
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if want, have := "POST", r.Method; want != have {
-			log.Panicf("unexpected request method, want: %q, have: %q", want, have)
+			t.Fatalf("unexpected request method, want: %q, have: %q", want, have)
 		}
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if want, have := "GET", string(body); want != have {
-			log.Panicf("unexpected request body, want: %q, have: %q", want, have)
+			t.Fatalf("unexpected request body, want: %q, have: %q", want, have)
 		}
 	})
 
@@ -106,7 +105,38 @@ func TestGetMethod(t *testing.T) {
 	defer resp.Body.Close()
 }
 
-func TestGetProtocolVersion(t *testing.T) {
+func TestURI(t *testing.T) {
+	mw, err := wasm.NewMiddleware(testCtx, test.BinE2EURI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mw.Close(testCtx)
+
+	var ts *httptest.Server
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if want, have := "/v1.0/hello?name=teddy", r.URL.RequestURI(); want != have {
+			t.Fatalf("unexpected request URI, want: %q, have: %q", want, have)
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want, have := "/v1.0/hi?name=panda", string(body); want != have {
+			t.Fatalf("unexpected request body, want: %q, have: %q", want, have)
+		}
+	})
+
+	ts = httptest.NewServer(mw.NewHandler(testCtx, next))
+	defer ts.Close()
+
+	resp, err := ts.Client().Get(ts.URL + "/v1.0/hi?name=panda")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+}
+
+func TestProtocolVersion(t *testing.T) {
 	tests := []struct {
 		http2    bool
 		expected string
@@ -124,7 +154,7 @@ func TestGetProtocolVersion(t *testing.T) {
 	for _, tt := range tests {
 		tc := tt
 		t.Run(tc.expected, func(t *testing.T) {
-			mw, err := wasm.NewMiddleware(testCtx, test.BinTestProtocolVersion)
+			mw, err := wasm.NewMiddleware(testCtx, test.BinE2EProtocolVersion)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -150,7 +180,7 @@ func TestGetProtocolVersion(t *testing.T) {
 				t.Fatal(err)
 			}
 			if want, have := tc.expected, string(body); want != have {
-				log.Panicf("unexpected response body, want: %q, have: %q", want, have)
+				t.Fatalf("unexpected response body, want: %q, have: %q", want, have)
 			}
 		})
 	}

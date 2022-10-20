@@ -115,12 +115,16 @@ func Test_host_GetURI(t *testing.T) {
 }
 
 func Test_host_SetURI(t *testing.T) {
-	t.Skip("getter function undefined, variable name: x-mosn-querystring")
 	tests := []struct {
 		name                              string
 		uri                               string
 		expectedPath, expectedQueryString string
 	}{
+		{
+			name:         "empty",
+			uri:          "",
+			expectedPath: "/",
+		},
 		{
 			name:         "slash",
 			uri:          "/",
@@ -144,9 +148,16 @@ func Test_host_SetURI(t *testing.T) {
 		tc := tt
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := variable.NewVariableContext(context.Background())
+			// Ensure there's an existing entry for query string.
+			variable.SetString(ctx, types.VarQueryString, "")
+
 			ctx = context.WithValue(ctx, filterKey{}, &filter{reqHeaders: newRequestHeader()})
 
 			h.SetURI(ctx, tc.uri)
+
+			if want, have := mustGetString(ctx, types.VarPath), mustGetString(ctx, types.VarPathOriginal); want != have {
+				t.Errorf("expected paths to match, want: %v, have: %v", want, have)
+			}
 
 			if have, err := variable.GetString(ctx, types.VarPath); err != nil {
 				t.Fatal(err)

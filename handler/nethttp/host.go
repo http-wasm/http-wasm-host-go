@@ -56,10 +56,19 @@ func (host) GetURI(ctx context.Context) string {
 // SetURI implements the same method as documented on handler.Host.
 func (host) SetURI(ctx context.Context, uri string) {
 	r := requestStateFromContext(ctx).r
+	if uri == "" { // url.ParseRequestURI fails on empty
+		r.RequestURI = "/"
+		r.URL.RawPath = "/"
+		r.URL.Path = "/"
+		r.URL.ForceQuery = false
+		r.URL.RawQuery = ""
+		return
+	}
 	u, err := url.ParseRequestURI(uri)
 	if err != nil {
 		panic(err)
 	}
+	r.RequestURI = uri
 	r.URL.RawPath = u.RawPath
 	r.URL.Path = u.Path
 	r.URL.ForceQuery = u.ForceQuery
