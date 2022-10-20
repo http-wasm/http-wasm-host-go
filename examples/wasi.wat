@@ -103,10 +103,9 @@
   ;; heap_start allows scratch space for WASI.
   (global $heap_start i32 (i32.const 32))
 
-  ;; mem_bytes are 64KB = heap_start
-  (global $mem_bytes i32 (i32.const 65504))
-  (func $mem_remaining (param $buf i32) (result i32)
-    (i32.sub (global.get $mem_bytes) (local.get $buf)))
+  (global $buf_limit i32 (i32.const 2048))
+  (func $buf_remaining (param $buf i32) (result i32)
+    (i32.sub (global.get $buf_limit) (local.get $buf)))
 
   ;; define a function table for getting a request or response properties.
   (table 10 funcref)
@@ -210,7 +209,7 @@
 
     ;; mem[buf:len] = method
     (local.set $len
-      (call $get_method (local.get $buf) (call $mem_remaining (local.get $buf))))
+      (call $get_method (local.get $buf) (call $buf_remaining (local.get $buf))))
 
     ;; buf += len
     (local.set $buf (i32.add (local.get $buf) (local.get $len)))
@@ -220,7 +219,7 @@
 
     ;; mem[buf:len] = get_uri
     (local.set $len
-      (call $get_uri (local.get $buf) (call $mem_remaining (local.get $buf))))
+      (call $get_uri (local.get $buf) (call $buf_remaining (local.get $buf))))
 
     ;; buf += len
     (local.set $buf (i32.add (local.get $buf) (local.get $len)))
@@ -230,7 +229,7 @@
 
     ;; mem[buf:len] = get_protocol_version
     (local.set $len
-      (call $get_protocol_version (local.get $buf) (call $mem_remaining (local.get $buf))))
+      (call $get_protocol_version (local.get $buf) (call $buf_remaining (local.get $buf))))
 
     ;; buf += len
     (local.set $buf (i32.add (local.get $buf) (local.get $len)))
@@ -253,7 +252,7 @@
 
     ;; mem[buf:len]  get_protocol_version
     (local.set $len
-      (call $get_protocol_version (local.get $buf) (call $mem_remaining (local.get $buf))))
+      (call $get_protocol_version (local.get $buf) (call $buf_remaining (local.get $buf))))
 
     ;; buf += len
     (local.set $buf (i32.add (local.get $buf) (local.get $len)))
@@ -290,18 +289,18 @@
 
     (local.set $buf (global.get $heap_start))
 
-    ;; result = table[names_fn](buf, mem_bytes)
+    ;; result = table[names_fn](buf, buf_limit)
     (local.set $result
       (call_indirect (type $get_header_names)
         (local.get  $buf)
-        (global.get $mem_bytes)
+        (global.get $buf_limit)
         (local.get  $names_fn)))
 
     ;; if there are no headers, return
     (if (i32.eqz (local.get $result)) (then (return)))
 
-    ;; if result > mem_bytes { panic }
-    (if (i32.gt_u (local.get $result) (global.get $mem_bytes))
+    ;; if result > buf_limit { panic }
+    (if (i32.gt_u (local.get $result) (global.get $buf_limit))
        (then (unreachable))) ;; too big so wasn't written
 
     ;; We can start writing memory after the NUL-terminated header names.
@@ -316,11 +315,11 @@
           ;; name = buf -len
           (local.set $name (i32.sub (local.get $buf) (local.get $len)))
 
-          ;; print_header_fields(name, buf_console, mem_bytes, values_fn)
+          ;; print_header_fields(name, buf_console, buf_limit, values_fn)
           (call $print_header_fields
             (local.get  $name) (local.get $len)
             (local.get  $buf_console)
-            (global.get $mem_bytes) ;; buf_limit
+            (global.get $buf_limit) ;; buf_limit
             (local.get  $values_fn))
 
           (local.set $buf (i32.add (local.get $buf) (i32.const 1))) ;; buf++
@@ -447,11 +446,11 @@
     (local $result i64)
     (local $len i32)
 
-    ;; result = table[body_fn](heap_start, mem_bytes)
+    ;; result = table[body_fn](heap_start, buf_limit)
     (local.set $result
       (call_indirect (type $read_body)
         (global.get $heap_start)
-        (global.get $mem_bytes)
+        (global.get $buf_limit)
         (local.get $body_fn)))
 
     ;; len = uint32(result)
