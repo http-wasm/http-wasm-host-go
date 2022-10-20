@@ -113,7 +113,16 @@ const (
 	// TODO: document on http-wasm-abi
 	FuncGetConfig = "get_config"
 
-	// FuncLog logs a message to the host's logs.
+	// FuncLogEnabled returns 1 if the api.LogLevel is enabled. This value may
+	// be cached at request granularity.
+	//
+	// This function is used to avoid unnecessary overhead generating log
+	// messages that the host would discard due to its level being below this.
+	//
+	// TODO: document on http-wasm-abi
+	FuncLogEnabled = "log_enabled"
+
+	// FuncLog logs a message to the host's logs at the given api.LogLevel.
 	//
 	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#log
 	FuncLog = "log"

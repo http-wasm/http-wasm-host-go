@@ -50,8 +50,8 @@ func ModuleConfig(moduleConfig wazero.ModuleConfig) Option {
 }
 
 // Logger sets the logger used by the guest when it calls "log". Defaults to
-// ignore messages.
-func Logger(logger api.LogFunc) Option {
+// api.NoopLogger.
+func Logger(logger api.Logger) Option {
 	return func(h *internal.WazeroOptions) {
 		h.Logger = logger
 	}

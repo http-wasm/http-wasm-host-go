@@ -14,6 +14,7 @@ import (
 	"github.com/tetratelabs/wazero"
 
 	httpwasm "github.com/http-wasm/http-wasm-host-go"
+	"github.com/http-wasm/http-wasm-host-go/api"
 	wasm "github.com/http-wasm/http-wasm-host-go/handler/nethttp"
 	"github.com/http-wasm/http-wasm-host-go/internal/test"
 )
@@ -165,13 +166,10 @@ func Example_wasi() {
 
 func Example_log() {
 	ctx := context.Background()
-	logger := func(_ context.Context, message string) {
-		fmt.Println(message)
-	}
 
 	// Configure and compile the WebAssembly guest binary. In this case, it is
 	// a logging interceptor.
-	mw, err := wasm.NewMiddleware(ctx, test.BinExampleLog, httpwasm.Logger(logger))
+	mw, err := wasm.NewMiddleware(ctx, test.BinExampleLog, httpwasm.Logger(api.ConsoleLogger{}))
 	if err != nil {
 		log.Panicln(err)
 	}

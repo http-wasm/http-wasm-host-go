@@ -6,28 +6,74 @@ import (
 	"os"
 	"runtime"
 
-	"mosn.io/api"
+	mosnapi "mosn.io/api"
 	"mosn.io/mosn/pkg/log"
 	mosnhttp "mosn.io/mosn/pkg/protocol/http"
 
 	httpwasm "github.com/http-wasm/http-wasm-host-go"
+	"github.com/http-wasm/http-wasm-host-go/api"
 	"github.com/http-wasm/http-wasm-host-go/api/handler"
 	internalhandler "github.com/http-wasm/http-wasm-host-go/internal/handler"
 )
 
 func init() {
 	// There's no API to configure a StreamFilter without using the global registry.
-	api.RegisterStream("httpwasm", factoryCreator)
+	mosnapi.RegisterStream("httpwasm", factoryCreator)
 }
 
-var _ api.StreamFilterFactoryCreator = factoryCreator
-var _ api.StreamFilterChainFactory = (*filterFactory)(nil)
-var _ api.StreamSenderFilter = (*filter)(nil)
-var _ api.StreamReceiverFilter = (*filter)(nil)
+// compile-time check to ensure proxyLogger implements api.Logger.
+var _ api.Logger = proxyLogger{}
+
+// proxyLogger uses log.Proxy
+type proxyLogger struct{}
+
+// IsEnabled implements the same method as documented on api.Logger.
+func (proxyLogger) IsEnabled(level api.LogLevel) bool {
+	return isLogLevelEnabled(level)
+}
+
+func isLogLevelEnabled(level api.LogLevel) bool {
+	realLevel := log.Proxy.GetLogLevel()
+	switch level {
+	case api.LogLevelError:
+		return realLevel >= log.ERROR
+	case api.LogLevelWarn:
+		return realLevel >= log.WARN
+	case api.LogLevelInfo:
+		return realLevel >= log.INFO
+	case api.LogLevelDebug:
+		return realLevel >= log.DEBUG
+	default: // same as api.LogLevelNone
+		return false
+	}
+}
+
+// Log implements the same method as documented on api.Logger.
+func (proxyLogger) Log(ctx context.Context, level api.LogLevel, message string) {
+	var logFn func(context.Context, string, ...interface{})
+	switch level {
+	case api.LogLevelError:
+		logFn = log.Proxy.Errorf
+	case api.LogLevelWarn:
+		logFn = log.Proxy.Warnf
+	case api.LogLevelInfo:
+		logFn = log.Proxy.Infof
+	case api.LogLevelDebug:
+		logFn = log.Proxy.Debugf
+	default: // same as api.LogLevelNone
+		return
+	}
+	logFn(ctx, "wasm: %s", message)
+}
+
+var _ mosnapi.StreamFilterFactoryCreator = factoryCreator
+var _ mosnapi.StreamFilterChainFactory = (*filterFactory)(nil)
+var _ mosnapi.StreamSenderFilter = (*filter)(nil)
+var _ mosnapi.StreamReceiverFilter = (*filter)(nil)
 
 var errNoPath = errors.New("path is not set or is not a string")
 
-func factoryCreator(config map[string]interface{}) (api.StreamFilterChainFactory, error) {
+func factoryCreator(config map[string]interface{}) (mosnapi.StreamFilterChainFactory, error) {
 	p, ok := config["path"].(string)
 	if !ok {
 		return nil, errNoPath
@@ -40,9 +86,7 @@ func factoryCreator(config map[string]interface{}) (api.StreamFilterChainFactory
 	ctx := context.Background()
 	m, err := internalhandler.NewMiddleware(ctx, code, host{},
 		httpwasm.GuestConfig([]byte(conf)),
-		httpwasm.Logger(func(ctx context.Context, s string) {
-			log.Proxy.Infof(ctx, "wasm: %s", s)
-		}))
+		httpwasm.Logger(proxyLogger{}))
 	runtime.SetFinalizer(m, func(m internalhandler.Middleware) {
 		m.Close(context.Background())
 	})
@@ -57,21 +101,21 @@ type filterFactory struct {
 	m internalhandler.Middleware
 }
 
-func (f filterFactory) CreateFilterChain(_ context.Context, callbacks api.StreamFilterChainFactoryCallbacks) {
+func (f filterFactory) CreateFilterChain(_ context.Context, callbacks mosnapi.StreamFilterChainFactoryCallbacks) {
 	fr := &filter{m: f.m, ch: make(chan error, 1), features: f.m.Features()}
-	callbacks.AddStreamReceiverFilter(fr, api.BeforeRoute)
-	callbacks.AddStreamSenderFilter(fr, api.BeforeSend)
+	callbacks.AddStreamReceiverFilter(fr, mosnapi.BeforeRoute)
+	callbacks.AddStreamSenderFilter(fr, mosnapi.BeforeSend)
 }
 
 type filter struct {
 	m internalhandler.Middleware
 
-	receiverFilterHandler api.StreamReceiverFilterHandler
+	receiverFilterHandler mosnapi.StreamReceiverFilterHandler
 
-	reqHeaders api.HeaderMap
-	reqBody    api.IoBuffer
+	reqHeaders mosnapi.HeaderMap
+	reqBody    mosnapi.IoBuffer
 
-	respHeaders api.HeaderMap
+	respHeaders mosnapi.HeaderMap
 	statusCode  int
 	respBody    []byte
 
@@ -81,7 +125,7 @@ type filter struct {
 	features handler.Features
 }
 
-func (f *filter) OnReceive(ctx context.Context, headers api.HeaderMap, body api.IoBuffer, _ api.HeaderMap) api.StreamFilterStatus {
+func (f *filter) OnReceive(ctx context.Context, headers mosnapi.HeaderMap, body mosnapi.IoBuffer, _ mosnapi.HeaderMap) mosnapi.StreamFilterStatus {
 	ctx = context.WithValue(ctx, filterKey{}, f)
 
 	f.reqHeaders = headers
@@ -102,7 +146,7 @@ func (f *filter) OnReceive(ctx context.Context, headers api.HeaderMap, body api.
 	}
 
 	if f.nextCalled {
-		return api.StreamFilterContinue
+		return mosnapi.StreamFilterContinue
 	}
 
 	// TODO(anuraaga): All mosn filter examples pass the request headers when sending a hijack reply. Trying to send
@@ -118,20 +162,20 @@ func (f *filter) OnReceive(ctx context.Context, headers api.HeaderMap, body api.
 	} else {
 		f.receiverFilterHandler.SendHijackReply(statusCode, headers)
 	}
-	return api.StreamFilterStop
+	return mosnapi.StreamFilterStop
 }
 
-func (f *filter) SetReceiveFilterHandler(handler api.StreamReceiverFilterHandler) {
+func (f *filter) SetReceiveFilterHandler(handler mosnapi.StreamReceiverFilterHandler) {
 	f.receiverFilterHandler = handler
 }
 
 func (f *filter) OnDestroy() {
 }
 
-func (f *filter) Append(ctx context.Context, headers api.HeaderMap, buf api.IoBuffer, trailers api.HeaderMap) api.StreamFilterStatus {
+func (f *filter) Append(ctx context.Context, headers mosnapi.HeaderMap, buf mosnapi.IoBuffer, trailers mosnapi.HeaderMap) mosnapi.StreamFilterStatus {
 	if !f.nextCalled {
 		clearAndCopyHeaders(headers, f.respHeaders)
-		return api.StreamFilterStop
+		return mosnapi.StreamFilterStop
 	}
 
 	ctx = context.WithValue(ctx, filterKey{}, f)
@@ -149,17 +193,17 @@ func (f *filter) Append(ctx context.Context, headers api.HeaderMap, buf api.IoBu
 	err := <-f.ch
 	if err != nil {
 		log.Proxy.Errorf(ctx, "wasm error: %v", err)
-		return api.StreamFilterContinue
+		return mosnapi.StreamFilterContinue
 	}
 
 	// TODO(anuraaga): Optimize
 	buf.Reset()
 	_ = buf.Append(f.respBody)
 
-	return api.StreamFilterContinue
+	return mosnapi.StreamFilterContinue
 }
 
-func (f *filter) SetSenderFilterHandler(api.StreamSenderFilterHandler) {
+func (f *filter) SetSenderFilterHandler(mosnapi.StreamSenderFilterHandler) {
 }
 
 type filterKey struct{}
@@ -172,7 +216,7 @@ func filterFromContext(ctx context.Context) *filter {
 	return ctx.Value(filterKey{}).(*filter)
 }
 
-func clearAndCopyHeaders(out, in api.HeaderMap) {
+func clearAndCopyHeaders(out, in mosnapi.HeaderMap) {
 	// TODO(anuraaga): All mosn filter examples pass the request headers when sending a hijack reply. We replace
 	// with response headers here until fixing that.
 	// There is no headers.Clear() for some reason.
@@ -183,7 +227,7 @@ func clearAndCopyHeaders(out, in api.HeaderMap) {
 	copyHeaders(in, out)
 }
 
-func copyHeaders(in, out api.HeaderMap) api.HeaderMap {
+func copyHeaders(in, out mosnapi.HeaderMap) mosnapi.HeaderMap {
 	if in != nil {
 		in.Range(func(key, value string) bool {
 			out.Set(key, value)
