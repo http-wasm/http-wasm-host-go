@@ -4,7 +4,6 @@ import (
 	_ "embed"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +18,8 @@ import (
 	_ "mosn.io/mosn/pkg/stream/http"
 	_ "mosn.io/mosn/pkg/stream/http2"
 	"mosn.io/mosn/test/util/mosn"
+
+	"github.com/http-wasm/http-wasm-host-go/internal/test"
 )
 
 var (
@@ -42,8 +43,71 @@ type testMosn struct {
 	*mosn.MosnWrapper
 }
 
-func TestAuth(t *testing.T) {
-	tests := []struct {
+func TestURI(t *testing.T) {
+	var backend *httptest.Server
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if want, have := "/v1.0/hello?name=teddy", r.URL.RequestURI(); want != have {
+			t.Fatalf("unexpected request URI, want: %q, have: %q", want, have)
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want, have := "/v1.0/hi?name=panda", string(body); want != have {
+			t.Fatalf("unexpected request body, want: %q, have: %q", want, have)
+		}
+	})
+
+	backend = httptest.NewServer(next)
+	defer backend.Close()
+	mosn := startMosn(t, backend.Listener.Addr().String(), test.BinE2EURI)
+	defer mosn.Close()
+
+	resp, err := http.Get(mosn.url + "/v1.0/hi?name=panda")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+}
+
+func TestProtocolVersion(t *testing.T) {
+	tesbackend := []struct {
+		http2    bool
+		respBody string
+	}{
+		{
+			http2:    false,
+			respBody: "HTTP/1.1",
+		},
+		// TODO(anuraaga): Enable http/2
+	}
+
+	backend := httptest.NewServer(serveJson)
+	defer backend.Close()
+	mosn := startMosn(t, backend.Listener.Addr().String(), test.BinE2EProtocolVersion)
+	defer mosn.Close()
+
+	for _, tc := range tesbackend {
+		tt := tc
+		t.Run(tt.respBody, func(t *testing.T) {
+			resp, err := http.Get(mosn.url)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want, have := tt.respBody, string(body); want != have {
+				t.Errorf("unexpected response body, want: %q, have: %q", want, have)
+			}
+		})
+	}
+}
+
+func TestExampleAuth(t *testing.T) {
+	tesbackend := []struct {
 		hdr          http.Header
 		status       int
 		authenticate bool
@@ -72,21 +136,21 @@ func TestAuth(t *testing.T) {
 
 	backend := httptest.NewServer(serveJson)
 	defer backend.Close()
-	mosn := startMosn(t, backend.Listener.Addr().String(), filepath.Join("examples", "auth.wasm"))
+	mosn := startMosn(t, backend.Listener.Addr().String(), test.BinExampleAuth)
 	defer mosn.Close()
 
-	for _, tc := range tests {
+	for _, tc := range tesbackend {
 		tt := tc
 		t.Run(fmt.Sprintf("%s", tt.hdr), func(t *testing.T) {
 			req, err := http.NewRequest(http.MethodGet, mosn.url, nil)
 			if err != nil {
-				log.Panicln(err)
+				t.Fatal(err)
 			}
 			req.Header = tt.hdr
 
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
-				log.Panicln(err)
+				t.Fatal(err)
 			}
 			resp.Body.Close()
 
@@ -106,16 +170,16 @@ func TestAuth(t *testing.T) {
 
 // TODO: TestConsole requires us to decide how to handle stdout in mosn
 
-func TestLog(t *testing.T) {
+func TestExampleLog(t *testing.T) {
 	backend := httptest.NewServer(serveJson)
 	defer backend.Close()
-	mosn := startMosn(t, backend.Listener.Addr().String(), filepath.Join("examples", "log.wasm"))
+	mosn := startMosn(t, backend.Listener.Addr().String(), test.BinExampleLog)
 	defer mosn.Close()
 
 	// Make a client request.
 	resp, err := http.Post(mosn.url, "application/json", strings.NewReader(requestBody))
 	if err != nil {
-		log.Panicln(err)
+		t.Fatal(err)
 	}
 	defer resp.Body.Close()
 
@@ -125,48 +189,12 @@ func TestLog(t *testing.T) {
 	}
 
 	if want, have := `wasm: hello`, string(out); !strings.Contains(have, want) {
-		log.Panicf("unexpected log, want: %q, have: %q", want, have)
+		t.Fatalf("unexpected log, want: %q, have: %q", want, have)
 	}
 }
 
-func TestProtocolVersion(t *testing.T) {
-	tests := []struct {
-		http2    bool
-		respBody string
-	}{
-		{
-			http2:    false,
-			respBody: "HTTP/1.1",
-		},
-		// TODO(anuraaga): Enable http/2
-	}
-
-	backend := httptest.NewServer(serveJson)
-	defer backend.Close()
-	mosn := startMosn(t, backend.Listener.Addr().String(), filepath.Join("tests", "protocol_version.wasm"))
-	defer mosn.Close()
-
-	for _, tc := range tests {
-		tt := tc
-		t.Run(tt.respBody, func(t *testing.T) {
-			resp, err := http.Get(mosn.url)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer resp.Body.Close()
-			body, err := io.ReadAll(resp.Body)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if want, have := tt.respBody, string(body); want != have {
-				t.Errorf("unexpected response body, want: %q, have: %q", want, have)
-			}
-		})
-	}
-}
-
-func TestRouter(t *testing.T) {
-	tests := []struct {
+func TestExampleRouter(t *testing.T) {
+	tesbackend := []struct {
 		path     string
 		respBody string
 	}{
@@ -190,16 +218,16 @@ func TestRouter(t *testing.T) {
 
 	backend := httptest.NewServer(servePath)
 	defer backend.Close()
-	mosn := startMosn(t, backend.Listener.Addr().String(), filepath.Join("examples", "router.wasm"))
+	mosn := startMosn(t, backend.Listener.Addr().String(), test.BinExampleRouter)
 	defer mosn.Close()
 
-	for _, tc := range tests {
+	for _, tc := range tesbackend {
 		tt := tc
 		t.Run(tt.path, func(t *testing.T) {
 			url := fmt.Sprintf("%s%s", mosn.url, tt.path)
 			resp, err := http.Get(url)
 			if err != nil {
-				log.Panicln(err)
+				t.Fatal(err)
 			}
 			defer resp.Body.Close()
 			content, _ := io.ReadAll(resp.Body)
@@ -210,8 +238,8 @@ func TestRouter(t *testing.T) {
 	}
 }
 
-func TestRedact(t *testing.T) {
-	tests := []struct {
+func TestExampleRedact(t *testing.T) {
+	tesbackend := []struct {
 		body     string
 		respBody string
 	}{
@@ -238,10 +266,10 @@ func TestRedact(t *testing.T) {
 		w.Write([]byte(body)) // nolint
 	}))
 	defer backend.Close()
-	mosn := startMosn(t, backend.Listener.Addr().String(), filepath.Join("examples", "redact.wasm"))
+	mosn := startMosn(t, backend.Listener.Addr().String(), test.BinExampleRedact)
 	defer mosn.Close()
 
-	for _, tc := range tests {
+	for _, tc := range tesbackend {
 		tt := tc
 		t.Run(tt.body, func(t *testing.T) {
 			// body is both the request to the proxy and the response from the backend
@@ -262,13 +290,17 @@ func TestRedact(t *testing.T) {
 	}
 }
 
-func startMosn(t *testing.T, backendAddr string, wasm string) testMosn {
+func startMosn(t *testing.T, backendAddr string, wasm []byte) testMosn {
 	t.Helper()
 
 	port := freePort()
 	adminPort := freePort()
 
 	logPath := filepath.Join(t.TempDir(), "mosn.log")
+	wasmPath := filepath.Join(t.TempDir(), "test.wasm")
+	if err := os.WriteFile(wasmPath, wasm, 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	app := mosn.NewMosn(&config.MOSNConfig{
 		Servers: []config.ServerConfig{
@@ -328,7 +360,7 @@ func startMosn(t *testing.T, backendAddr string, wasm string) testMosn {
 								{
 									Type: "httpwasm",
 									Config: map[string]interface{}{
-										"path":   filepath.Join("..", "..", "internal", "test", "testdata", wasm),
+										"path":   wasmPath,
 										"config": "open sesame",
 									},
 								},

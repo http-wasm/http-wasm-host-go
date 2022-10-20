@@ -33,5 +33,8 @@
     (call $set_method (global.get $post) (global.get $post_len))
 
     ;; write the method to the request body.
-    (call $write_request_body (global.get $buf) (local.get $len)))
+    (call $write_request_body (global.get $buf) (local.get $len))
+
+    ;; call the next handler which verifies state
+    (call $next))
 )

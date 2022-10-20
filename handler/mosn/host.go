@@ -126,10 +126,20 @@ func (host) GetURI(ctx context.Context) string {
 }
 
 func (host) SetURI(ctx context.Context, uri string) {
+	req := filterFromContext(ctx).reqHeaders.(http.RequestHeader)
+	if uri == "" { // url.ParseRequestURI fails on empty
+		req.SetRequestURI("/")
+		mustSetString(ctx, types.VarPathOriginal, "/")
+		mustSetString(ctx, types.VarPath, "/")
+		mustSetString(ctx, types.VarQueryString, "")
+		return
+	}
+	req.SetRequestURI(uri)
 	u, err := url.ParseRequestURI(uri)
 	if err != nil {
 		panic(err)
 	}
+	mustSetString(ctx, types.VarPathOriginal, u.Path)
 	mustSetString(ctx, types.VarPath, u.Path)
 	if len(u.RawQuery) > 0 || u.ForceQuery {
 		mustSetString(ctx, types.VarQueryString, u.RawQuery)

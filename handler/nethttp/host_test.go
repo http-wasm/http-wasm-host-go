@@ -120,6 +120,7 @@ func Test_host_GetURI(t *testing.T) {
 func Test_host_SetURI(t *testing.T) {
 	tests := []struct {
 		name     string
+		input    string
 		expected string
 	}{
 		{
@@ -128,18 +129,22 @@ func Test_host_SetURI(t *testing.T) {
 		},
 		{
 			name:     "encodes space",
+			input:    "/a%20b",
 			expected: "/a%20b",
 		},
 		{
 			name:     "encodes query",
+			input:    "/a%20b?q=go+language",
 			expected: "/a%20b?q=go+language",
 		},
 		{
 			name:     "double slash path",
+			input:    "//foo",
 			expected: "//foo",
 		},
 		{
 			name:     "empty query",
+			input:    "/foo?",
 			expected: "/foo?",
 		},
 	}
@@ -151,7 +156,7 @@ func Test_host_SetURI(t *testing.T) {
 			r := &http.Request{URL: &url.URL{}}
 			ctx := context.WithValue(testCtx, requestStateKey{}, &requestState{r: r})
 
-			h.SetURI(ctx, tc.expected)
+			h.SetURI(ctx, tc.input)
 			if want, have := tc.expected, r.URL.RequestURI(); want != have {
 				t.Errorf("unexpected uri, want: %v, have: %v", want, have)
 			}
