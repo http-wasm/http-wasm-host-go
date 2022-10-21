@@ -40,7 +40,7 @@ type middleware struct {
 	newNamespace            httpwasm.NewNamespace
 	moduleConfig            wazero.ModuleConfig
 	guestConfig             []byte
-	logFn                   api.LogFunc
+	logger                  api.Logger
 	pool                    sync.Pool
 	features                handler.Features
 }
@@ -54,7 +54,7 @@ func NewMiddleware(ctx context.Context, guest []byte, host handler.Host, options
 		NewRuntime:   internal.DefaultRuntime,
 		NewNamespace: internal.DefaultNamespace,
 		ModuleConfig: wazero.NewModuleConfig(),
-		Logger:       func(context.Context, string) {},
+		Logger:       api.NoopLogger{},
 	}
 	for _, option := range options {
 		option(o)
@@ -71,7 +71,7 @@ func NewMiddleware(ctx context.Context, guest []byte, host handler.Host, options
 		newNamespace: o.NewNamespace,
 		moduleConfig: o.ModuleConfig,
 		guestConfig:  o.GuestConfig,
-		logFn:        o.Logger,
+		logger:       o.Logger,
 	}
 
 	if m.hostModule, err = m.compileHost(ctx); err != nil {
@@ -196,14 +196,25 @@ func (m *middleware) getConfig(ctx context.Context, mod wazeroapi.Module,
 	return writeIfUnderLimit(ctx, mod, buf, bufLimit, m.guestConfig)
 }
 
+// log implements the WebAssembly host function handler.FuncLogEnabled.
+func (m *middleware) logEnabled(level api.LogLevel) uint32 {
+	if m.logger.IsEnabled(level) {
+		return 1
+	}
+	return 0
+}
+
 // log implements the WebAssembly host function handler.FuncLog.
 func (m *middleware) log(ctx context.Context, mod wazeroapi.Module,
-	message, messageLen uint32) {
+	level api.LogLevel, message, messageLen uint32) {
+	if !m.logger.IsEnabled(level) {
+		return
+	}
 	var msg string
 	if messageLen > 0 {
 		msg = mustReadString(ctx, mod.Memory(), "message", message, messageLen)
 	}
-	m.logFn(ctx, msg)
+	m.logger.Log(ctx, level, msg)
 }
 
 // getMethod implements the WebAssembly host function handler.FuncGetMethod.
@@ -513,8 +524,10 @@ func (m *middleware) compileHost(ctx context.Context) (wazero.CompiledModule, er
 			handler.FuncEnableFeatures, "features").
 		ExportFunction(handler.FuncGetConfig, m.getConfig,
 			handler.FuncGetConfig, "buf", "buf_limit").
+		ExportFunction(handler.FuncLogEnabled, m.logEnabled,
+			handler.FuncLogEnabled, "level").
 		ExportFunction(handler.FuncLog, m.log,
-			handler.FuncLog, "message", "message_len").
+			handler.FuncLog, "level", "message", "message_len").
 		ExportFunction(handler.FuncGetMethod, m.getMethod,
 			handler.FuncGetMethod, "buf", "buf_limit").
 		ExportFunction(handler.FuncSetMethod, m.setMethod,

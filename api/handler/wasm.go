@@ -36,7 +36,7 @@ const (
 	//
 	// The first call to FuncWriteBody in FuncHandle overwrites any request
 	// body.
-	BodyKindRequest BodyKind = iota
+	BodyKindRequest BodyKind = 0
 
 	// BodyKindResponse represents an operation on an HTTP request body.
 	//
@@ -50,31 +50,31 @@ const (
 	//
 	// The first call to FuncWriteBody in FuncHandle or after FuncNext
 	// overwrites any response body.
-	BodyKindResponse
+	BodyKindResponse BodyKind = 1
 )
 
 type HeaderKind = uint32
 
 const (
 	// HeaderKindRequest represents an operation on HTTP request headers.
-	HeaderKindRequest HeaderKind = iota
+	HeaderKindRequest HeaderKind = 0
 
 	// HeaderKindResponse represents an operation on HTTP response headers.
-	HeaderKindResponse
+	HeaderKindResponse HeaderKind = 1
 
 	// HeaderKindRequestTrailers represents an operation on HTTP request
 	// trailers (trailing headers). This requires FeatureTrailers.
 	//
 	// To enable FeatureTrailers, call FuncEnableFeatures prior to FuncNext.
 	// Doing otherwise, may result in a panic.
-	HeaderKindRequestTrailers
+	HeaderKindRequestTrailers HeaderKind = 2
 
 	// HeaderKindResponseTrailers represents an operation on HTTP response
 	// trailers (trailing headers). This requires FeatureTrailers.
 	//
 	// To enable FeatureTrailers, call FuncEnableFeatures prior to FuncNext.
 	// Doing otherwise, may result in a panic.
-	HeaderKindResponseTrailers
+	HeaderKindResponseTrailers HeaderKind = 3
 )
 
 const (
@@ -113,7 +113,16 @@ const (
 	// TODO: document on http-wasm-abi
 	FuncGetConfig = "get_config"
 
-	// FuncLog logs a message to the host's logs.
+	// FuncLogEnabled returns 1 if the api.LogLevel is enabled. This value may
+	// be cached at request granularity.
+	//
+	// This function is used to avoid unnecessary overhead generating log
+	// messages that the host would discard due to its level being below this.
+	//
+	// TODO: document on http-wasm-abi
+	FuncLogEnabled = "log_enabled"
+
+	// FuncLog logs a message to the host's logs at the given api.LogLevel.
 	//
 	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md#log
 	FuncLog = "log"
