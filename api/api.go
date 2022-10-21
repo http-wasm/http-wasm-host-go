@@ -13,11 +13,11 @@ import (
 type LogLevel int32
 
 const (
-	LogLevelDebug LogLevel = iota - 1
-	LogLevelInfo
-	LogLevelWarn
-	LogLevelError
-	LogLevelNone
+	LogLevelDebug LogLevel = -1
+	LogLevelInfo  LogLevel = 0
+	LogLevelWarn  LogLevel = 1
+	LogLevelError LogLevel = 2
+	LogLevelNone  LogLevel = 3
 )
 
 // compile-time check to ensure NoopLogger implements api.Logger.
