@@ -5,12 +5,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/textproto"
 	"net/url"
 
+	"github.com/valyala/fasthttp"
 	"mosn.io/api"
 	"mosn.io/mosn/pkg/types"
 	"mosn.io/mosn/pkg/variable"
-	"mosn.io/pkg/header"
 	"mosn.io/pkg/protocol/http"
 
 	"github.com/http-wasm/http-wasm-host-go/api/handler"
@@ -57,19 +58,50 @@ func (host) GetRequestHeaderValues(ctx context.Context, name string) []string {
 	return getHeaders(filterFromContext(ctx).reqHeaders, name)
 }
 
-func (host) SetRequestHeaderValue(ctx context.Context, name, value string) {
+func (h host) SetRequestHeaderValue(ctx context.Context, name, value string) {
 	f := filterFromContext(ctx)
-	f.reqHeaders = setHeader(f.reqHeaders, name, value)
+	if hdr := f.reqHeaders; hdr == nil {
+		f.reqHeaders = http.RequestHeader{RequestHeader: &fasthttp.RequestHeader{}}
+		h.SetRequestHeaderValue(ctx, name, value)
+	} else if req, ok := hdr.(http.RequestHeader); ok {
+		delHeader(req, name) // set doesn't currently overwrite all fields!
+		req.Set(name, value)
+	} else {
+		panic(fmt.Errorf("BUG: unknown type of request header: %v", h))
+	}
 }
 
-func (host) AddRequestHeaderValue(ctx context.Context, name, value string) {
+func (h host) AddRequestHeaderValue(ctx context.Context, name, value string) {
 	f := filterFromContext(ctx)
-	f.respHeaders = addHeader(f.respHeaders, name, value)
+	if hdr := f.reqHeaders; hdr == nil {
+		h.SetRequestHeaderValue(ctx, name, value)
+	} else if req, ok := hdr.(http.RequestHeader); ok {
+		req.Add(name, value)
+	} else {
+		panic(fmt.Errorf("BUG: unknown type of request header: %v", hdr))
+	}
 }
 
 func (host) RemoveRequestHeader(ctx context.Context, name string) {
 	f := filterFromContext(ctx)
-	f.respHeaders.Del(name)
+	if hdr := f.reqHeaders; hdr == nil {
+		// noop
+	} else if req, ok := hdr.(http.RequestHeader); ok {
+		delHeader(req, name)
+	} else {
+		panic(fmt.Errorf("BUG: unknown type of request header: %v", hdr))
+	}
+}
+
+func delHeader(h api.HeaderMap, name string) {
+	// TODO: mosn Del only deletes only a single value
+	name = textproto.CanonicalMIMEHeaderKey(name)
+	h.Range(func(key, value string) bool {
+		if key == name {
+			h.Del(key)
+		}
+		return true
+	})
 }
 
 func (host) RequestBodyReader(ctx context.Context) io.ReadCloser {
@@ -178,19 +210,39 @@ func (host) GetResponseHeaderValues(ctx context.Context, name string) []string {
 	return getHeaders(filterFromContext(ctx).respHeaders, name)
 }
 
-func (host) SetResponseHeaderValue(ctx context.Context, name, value string) {
+func (h host) SetResponseHeaderValue(ctx context.Context, name, value string) {
 	f := filterFromContext(ctx)
-	f.respHeaders = setHeader(f.respHeaders, name, value)
+	if hdr := f.respHeaders; hdr == nil {
+		f.respHeaders = http.ResponseHeader{ResponseHeader: &fasthttp.ResponseHeader{}}
+		h.SetResponseHeaderValue(ctx, name, value)
+	} else if resp, ok := hdr.(http.ResponseHeader); ok {
+		delHeader(resp, name) // set doesn't currently overwrite all fields!
+		resp.Set(name, value)
+	} else {
+		panic(fmt.Errorf("BUG: unknown type of response header: %v", h))
+	}
 }
 
-func (host) AddResponseHeaderValue(ctx context.Context, name, value string) {
+func (h host) AddResponseHeaderValue(ctx context.Context, name, value string) {
 	f := filterFromContext(ctx)
-	f.respHeaders = addHeader(f.respHeaders, name, value)
+	if hdr := f.respHeaders; hdr == nil {
+		h.SetRequestHeaderValue(ctx, name, value)
+	} else if resp, ok := hdr.(http.ResponseHeader); ok {
+		resp.Add(name, value)
+	} else {
+		panic(fmt.Errorf("BUG: unknown type of response header: %v", hdr))
+	}
 }
 
 func (host) RemoveResponseHeader(ctx context.Context, name string) {
 	f := filterFromContext(ctx)
-	f.respHeaders.Del(name)
+	if hdr := f.respHeaders; hdr == nil {
+		// noop
+	} else if resp, ok := hdr.(http.ResponseHeader); ok {
+		delHeader(resp, name)
+	} else {
+		panic(fmt.Errorf("BUG: unknown type of response header: %v", hdr))
+	}
 }
 
 func (host) ResponseBodyReader(ctx context.Context) io.ReadCloser {
@@ -266,27 +318,12 @@ func getHeaders(headers api.HeaderMap, name string) (values []string) {
 	if headers == nil {
 		return
 	}
+	name = textproto.CanonicalMIMEHeaderKey(name)
 	headers.Range(func(key, value string) bool {
-		if key == name {
+		if key == name && value != http.PlaceHolder {
 			values = append(values, value)
 		}
 		return true
 	})
 	return
-}
-
-func setHeader(headers api.HeaderMap, name string, value string) api.HeaderMap {
-	if headers == nil {
-		return header.CommonHeader(map[string]string{name: value})
-	}
-	headers.Set(name, value)
-	return headers
-}
-
-func addHeader(headers api.HeaderMap, name string, value string) api.HeaderMap {
-	if headers == nil {
-		return header.CommonHeader(map[string]string{name: value})
-	}
-	headers.Add(name, value)
-	return headers
 }

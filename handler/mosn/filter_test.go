@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -168,7 +169,60 @@ func TestExampleAuth(t *testing.T) {
 	}
 }
 
-// TODO: TestConsole requires us to decide how to handle stdout in mosn
+func TestExampleWASI(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Add("Set-Cookie", "a=b") // example of multiple headers
+		w.Header().Add("Set-Cookie", "c=d")
+		w.Header().Set("Date", "Tue, 15 Nov 1994 08:12:31 GMT")
+		w.Write([]byte(`{"hello": "world"}`)) // nolint
+	}))
+	defer backend.Close()
+
+	stdout, stderr := CaptureStdio(t, func() {
+		mosn := startMosn(t, backend.Listener.Addr().String(), test.BinExampleWASI)
+		defer mosn.Close()
+
+		// Make a client request which should print to the console
+		req, err := http.NewRequest("POST", mosn.url, strings.NewReader(requestBody))
+		if err != nil {
+			log.Panicln(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Host = "localhost"
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			log.Panicln(err)
+		}
+		defer resp.Body.Close()
+	})
+
+	want := `POST / HTTP/1.1
+Host: localhost
+Content-Length: 18
+Content-Type: application/json
+User-Agent: Go-http-client/1.1
+Accept-Encoding: gzip
+
+{"hello": "panda"}
+
+HTTP/1.1 200
+Content-Length: 18
+Content-Type: application/json
+Set-Cookie: a=b
+Set-Cookie: c=d
+Date: Tue, 15 Nov 1994 08:12:31 GMT
+
+{"hello": "world"}
+`
+	if have := stdout; want != have {
+		t.Fatalf("unexpected stdout, want: %q, have: %q", want, have)
+	}
+
+	if want, have := ``, stderr; want != have {
+		t.Fatalf("unexpected stderr, want: %q, have: %q", want, have)
+	}
+}
 
 func TestExampleLog(t *testing.T) {
 	backend := httptest.NewServer(serveJson)

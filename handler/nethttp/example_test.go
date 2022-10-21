@@ -115,6 +115,7 @@ func Example_wasi() {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Add("Set-Cookie", "a=b") // example of multiple headers
 		w.Header().Add("Set-Cookie", "c=d")
+		w.Header().Set("Date", "Tue, 15 Nov 1994 08:12:31 GMT")
 
 		// Use chunked encoding so we can set a test trailer
 		w.Header().Set("Transfer-Encoding", "chunked")
@@ -155,6 +156,7 @@ func Example_wasi() {
 	//
 	// HTTP/1.1 200
 	// Content-Type: application/json
+	// Date: Tue, 15 Nov 1994 08:12:31 GMT
 	// Set-Cookie: a=b
 	// Set-Cookie: c=d
 	// Trailer: grpc-status

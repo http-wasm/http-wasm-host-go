@@ -2,6 +2,7 @@ package wasm
 
 import (
 	"context"
+	"net/textproto"
 	"reflect"
 	"sort"
 	"strings"
@@ -12,15 +13,9 @@ import (
 	mosnhttp "mosn.io/mosn/pkg/protocol/http"
 	"mosn.io/mosn/pkg/types"
 	"mosn.io/mosn/pkg/variable"
+
+	"github.com/http-wasm/http-wasm-host-go/internal/test"
 )
-
-func newRequestHeader() mosnhttp.RequestHeader {
-	return mosnhttp.RequestHeader{RequestHeader: &fasthttp.RequestHeader{}}
-}
-
-func newResponseHeader() mosnhttp.ResponseHeader {
-	return mosnhttp.ResponseHeader{ResponseHeader: &fasthttp.ResponseHeader{}}
-}
 
 func Test_host_GetMethod(t *testing.T) {
 	tests := []string{"GET", "POST", "OPTIONS"}
@@ -29,9 +24,7 @@ func Test_host_GetMethod(t *testing.T) {
 	for _, tt := range tests {
 		tc := tt
 		t.Run(tc, func(t *testing.T) {
-			ctx := variable.NewVariableContext(context.Background())
-			ctx = context.WithValue(ctx, filterKey{}, &filter{reqHeaders: newRequestHeader()})
-
+			ctx, _ := newTestRequestContext()
 			if err := variable.SetString(ctx, types.VarMethod, tc); err != nil {
 				t.Fatal(err)
 			}
@@ -50,8 +43,7 @@ func Test_host_SetMethod(t *testing.T) {
 	for _, tt := range tests {
 		tc := tt
 		t.Run(tc, func(t *testing.T) {
-			ctx := variable.NewVariableContext(context.Background())
-			ctx = context.WithValue(ctx, filterKey{}, &filter{reqHeaders: newRequestHeader()})
+			ctx, _ := newTestRequestContext()
 
 			h.SetMethod(ctx, tc)
 
@@ -95,8 +87,7 @@ func Test_host_GetURI(t *testing.T) {
 	for _, tt := range tests {
 		tc := tt
 		t.Run(tc.name, func(t *testing.T) {
-			ctx := variable.NewVariableContext(context.Background())
-			ctx = context.WithValue(ctx, filterKey{}, &filter{reqHeaders: newRequestHeader()})
+			ctx, _ := newTestRequestContext()
 
 			if err := variable.SetString(ctx, types.VarPath, tc.path); err != nil {
 				t.Fatal(err)
@@ -116,30 +107,33 @@ func Test_host_GetURI(t *testing.T) {
 
 func Test_host_SetURI(t *testing.T) {
 	tests := []struct {
-		name                              string
-		uri                               string
-		expectedPath, expectedQueryString string
+		name     string
+		input    string
+		expected string
 	}{
 		{
-			name:         "empty",
-			uri:          "",
-			expectedPath: "/",
+			name:     "coerces empty path to slash",
+			expected: "/",
 		},
 		{
-			name:         "slash",
-			uri:          "/",
-			expectedPath: "/",
+			name:     "encodes space",
+			input:    "/a%20b",
+			expected: "/a%20b",
 		},
 		{
-			name:         "space",
-			uri:          "/ ",
-			expectedPath: "/ ",
+			name:     "encodes query",
+			input:    "/a%20b?q=go+language",
+			expected: "/a%20b?q=go+language",
 		},
 		{
-			name:                "space query",
-			uri:                 "/ ?q=go+language",
-			expectedPath:        "/ ",
-			expectedQueryString: "q=go+language",
+			name:     "double slash path",
+			input:    "//foo",
+			expected: "//foo",
+		},
+		{
+			name:     "empty query",
+			input:    "/foo?",
+			expected: "/foo?",
 		},
 	}
 
@@ -147,43 +141,32 @@ func Test_host_SetURI(t *testing.T) {
 	for _, tt := range tests {
 		tc := tt
 		t.Run(tc.name, func(t *testing.T) {
-			ctx := variable.NewVariableContext(context.Background())
-			// Ensure there's an existing entry for query string.
-			variable.SetString(ctx, types.VarQueryString, "")
+			ctx, r := newTestRequestContext()
 
-			ctx = context.WithValue(ctx, filterKey{}, &filter{reqHeaders: newRequestHeader()})
-
-			h.SetURI(ctx, tc.uri)
-
-			if want, have := mustGetString(ctx, types.VarPath), mustGetString(ctx, types.VarPathOriginal); want != have {
-				t.Errorf("expected paths to match, want: %v, have: %v", want, have)
-			}
-
-			if have, err := variable.GetString(ctx, types.VarPath); err != nil {
-				t.Fatal(err)
-			} else if want := tc.expectedPath; want != have {
-				t.Errorf("unexpected path, want: %v, have: %v", want, have)
-			}
-
-			if have, err := variable.GetString(ctx, types.VarQueryString); err != nil {
-				t.Fatal(err)
-			} else if want := tc.expectedQueryString; want != have {
-				t.Errorf("unexpected query string, want: %v, have: %v", want, have)
+			h.SetURI(ctx, tc.input)
+			if want, have := tc.expected, string(r.RequestURI()); want != have {
+				t.Errorf("unexpected uri, want: %v, have: %v", want, have)
 			}
 		})
 	}
 }
 
-func Test_host_GetRequestHeaderNames(t *testing.T) {
-	reqHeaders := newRequestHeader()
-	addTestHeaders(reqHeaders)
-	ctx := variable.NewVariableContext(context.Background())
-	ctx = context.WithValue(ctx, filterKey{}, &filter{reqHeaders: reqHeaders})
+func Test_host_GetProtocolVersion(t *testing.T) {
+	t.Skip("TODO")
+}
 
-	want := []string{"Content-Type", "Vary", "Empty"}
+func Test_host_GetRequestHeaderNames(t *testing.T) {
+	ctx, _ := newTestRequestContext()
+
+	var want []string
+	for k := range test.RequestHeaders {
+		want = append(want, k)
+	}
+	sort.Strings(want)
+
 	have := host{}.GetRequestHeaderNames(ctx)
 	sort.Strings(have)
-	if reflect.DeepEqual(want, have) {
+	if !reflect.DeepEqual(want, have) {
 		t.Errorf("unexpected header names, want: %v, have: %v", want, have)
 	}
 }
@@ -199,11 +182,10 @@ func Test_host_GetRequestHeaderValues(t *testing.T) {
 			headerName: "Content-Type",
 			expected:   []string{"text/plain"},
 		},
-		// TODO: multi-field
 		{
-			name:       "comma value",
-			headerName: "Vary",
-			expected:   []string{"Accept-Encoding, User-Agent"},
+			name:       "multi-field with comma value",
+			headerName: "X-Forwarded-For",
+			expected:   []string{"client, proxy1", "proxy2"},
 		},
 		{
 			name:       "empty value",
@@ -220,10 +202,7 @@ func Test_host_GetRequestHeaderValues(t *testing.T) {
 	for _, tt := range tests {
 		tc := tt
 		t.Run(tc.name, func(t *testing.T) {
-			reqHeaders := newRequestHeader()
-			addTestHeaders(reqHeaders)
-			ctx := variable.NewVariableContext(context.Background())
-			ctx = context.WithValue(ctx, filterKey{}, &filter{reqHeaders: reqHeaders})
+			ctx, _ := newTestRequestContext()
 
 			values := h.GetRequestHeaderValues(ctx, tc.headerName)
 			if want, have := tc.expected, values; !reflect.DeepEqual(want, have) {
@@ -236,46 +215,37 @@ func Test_host_GetRequestHeaderValues(t *testing.T) {
 func Test_host_SetRequestHeaderValue(t *testing.T) {
 	tests := []struct {
 		name       string
-		reqHeaders api.HeaderMap
 		headerName string
-		value      string
+		expected   string
 	}{
 		{
-			name:       "single value",
-			headerName: "Accept",
-			value:      "text/plain",
+			name:       "non-existing",
+			headerName: "custom",
+			expected:   "1",
 		},
 		{
-			name:       "single value overwrites",
-			headerName: "Accept",
-			value:      "text/plain",
+			name:       "existing",
+			headerName: "Content-Type",
+			expected:   "application/json",
 		},
 		{
-			name:       "multi-field overwrites",
-			headerName: "Set-Cookie",
-			value:      "z",
+			name:       "existing lowercase",
+			headerName: "content-type",
+			expected:   "application/json",
 		},
 		{
-			name:       "comma value",
+			name:       "set to empty",
+			headerName: "Custom",
+		},
+		{
+			name:       "multi-field",
 			headerName: "X-Forwarded-For",
-			value:      "1.2.3.4, 4.5.6.7",
+			expected:   "proxy2",
 		},
 		{
-			name:       "comma value overwrites",
-			headerName: "Vary",
-			value:      "Accept-Encoding, User-Agent",
-		},
-		{
-			name:       "empty value",
-			headerName: "aloha",
-		},
-		{
-			name:       "empty value overwrites",
-			headerName: "Empty",
-		},
-		{
-			name:       "no value",
-			headerName: "Not Found",
+			name:       "set multi-field to empty",
+			headerName: "X-Forwarded-For",
+			expected:   "",
 		},
 	}
 
@@ -283,32 +253,120 @@ func Test_host_SetRequestHeaderValue(t *testing.T) {
 	for _, tt := range tests {
 		tc := tt
 		t.Run(tc.name, func(t *testing.T) {
-			reqHeaders := tc.reqHeaders
-			if reqHeaders == nil {
-				reqHeaders = newRequestHeader()
-				addTestHeaders(reqHeaders)
-			}
-			ctx := variable.NewVariableContext(context.Background())
-			ctx = context.WithValue(ctx, filterKey{}, &filter{reqHeaders: reqHeaders})
+			ctx, _ := newTestRequestContext()
 
-			h.SetRequestHeaderValue(ctx, tc.headerName, tc.value)
-			if want, have := tc.value, strings.Join(headerValues(reqHeaders, tc.headerName), "|"); want != have {
+			h.SetRequestHeaderValue(ctx, tc.headerName, tc.expected)
+			if want, have := tc.expected, strings.Join(h.GetRequestHeaderValues(ctx, tc.headerName), "|"); want != have {
 				t.Errorf("unexpected header, want: %v, have: %v", want, have)
 			}
 		})
 	}
 }
 
-func Test_host_GetResponseHeaderNames(t *testing.T) {
-	respHeaders := newResponseHeader()
-	addTestHeaders(respHeaders)
-	ctx := variable.NewVariableContext(context.Background())
-	ctx = context.WithValue(ctx, filterKey{}, &filter{respHeaders: respHeaders})
+func Test_host_AddRequestHeaderValue(t *testing.T) {
+	tests := []struct {
+		name       string
+		headerName string
+		value      string
+		expected   []string
+	}{
+		{
+			name:       "non-existing",
+			headerName: "new",
+			value:      "1",
+			expected:   []string{"1"},
+		},
+		{
+			name:       "empty",
+			headerName: "new",
+			expected:   []string{""},
+		},
+		{
+			name:       "existing",
+			headerName: "X-Forwarded-For",
+			value:      "proxy3",
+			expected:   []string{"client, proxy1", "proxy2", "proxy3"},
+		},
+		{
+			name:       "lowercase",
+			headerName: "x-forwarded-for",
+			value:      "proxy3",
+			expected:   []string{"client, proxy1", "proxy2", "proxy3"},
+		},
+		{
+			name:       "existing empty",
+			headerName: "X-Forwarded-For",
+			expected:   []string{"client, proxy1", "proxy2", ""},
+		},
+	}
 
-	want := []string{"Content-Type", "Vary", "Empty"}
+	h := host{}
+	for _, tt := range tests {
+		tc := tt
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, _ := newTestRequestContext()
+
+			h.AddRequestHeaderValue(ctx, tc.headerName, tc.value)
+			if want, have := tc.expected, h.GetRequestHeaderValues(ctx, tc.headerName); !reflect.DeepEqual(want, have) {
+				t.Errorf("unexpected header, want: %v, have: %v", want, have)
+			}
+		})
+	}
+}
+
+func Test_host_RemoveRequestHeaderValue(t *testing.T) {
+	tests := []struct {
+		name       string
+		headerName string
+	}{
+		{
+			name:       "doesn't exist",
+			headerName: "custom",
+		},
+		{
+			name:       "empty",
+			headerName: "Empty",
+		},
+		{
+			name:       "exists",
+			headerName: "Custom",
+		},
+		{
+			name:       "lowercase",
+			headerName: "custom",
+		},
+		{
+			name:       "multi-field",
+			headerName: "X-Forwarded-For",
+		},
+	}
+
+	h := host{}
+	for _, tt := range tests {
+		tc := tt
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, _ := newTestRequestContext()
+
+			h.RemoveRequestHeader(ctx, tc.headerName)
+			if have := h.GetRequestHeaderValues(ctx, tc.headerName); len(have) > 0 {
+				t.Errorf("unexpected headers: %v", have)
+			}
+		})
+	}
+}
+
+func Test_host_GetResponseHeaderNames(t *testing.T) {
+	ctx, _ := newTestResponseContext()
+
+	var want []string
+	for k := range test.ResponseHeaders {
+		want = append(want, k)
+	}
+	sort.Strings(want)
+
 	have := host{}.GetResponseHeaderNames(ctx)
 	sort.Strings(have)
-	if reflect.DeepEqual(want, have) {
+	if !reflect.DeepEqual(want, have) {
 		t.Errorf("unexpected header names, want: %v, have: %v", want, have)
 	}
 }
@@ -324,11 +382,10 @@ func Test_host_GetResponseHeaderValues(t *testing.T) {
 			headerName: "Content-Type",
 			expected:   []string{"text/plain"},
 		},
-		// TODO: multi-field
 		{
-			name:       "comma value",
-			headerName: "Vary",
-			expected:   []string{"Accept-Encoding, User-Agent"},
+			name:       "multi-field with comma value",
+			headerName: "Set-Cookie",
+			expected:   []string{"a=b, c=d", "e=f"},
 		},
 		{
 			name:       "empty value",
@@ -345,10 +402,7 @@ func Test_host_GetResponseHeaderValues(t *testing.T) {
 	for _, tt := range tests {
 		tc := tt
 		t.Run(tc.name, func(t *testing.T) {
-			respHeaders := newResponseHeader()
-			addTestHeaders(respHeaders)
-			ctx := variable.NewVariableContext(context.Background())
-			ctx = context.WithValue(ctx, filterKey{}, &filter{respHeaders: respHeaders})
+			ctx, _ := newTestResponseContext()
 
 			values := h.GetResponseHeaderValues(ctx, tc.headerName)
 			if want, have := tc.expected, values; !reflect.DeepEqual(want, have) {
@@ -360,42 +414,38 @@ func Test_host_GetResponseHeaderValues(t *testing.T) {
 
 func Test_host_SetResponseHeaderValue(t *testing.T) {
 	tests := []struct {
-		name        string
-		respHeaders api.HeaderMap
-		headerName  string
-		value       string
+		name       string
+		headerName string
+		expected   string
 	}{
 		{
-			name:       "single value",
-			headerName: "Accept",
-			value:      "text/plain",
+			name:       "non-existing",
+			headerName: "custom",
+			expected:   "1",
 		},
 		{
-			name:       "single value overwrites",
-			headerName: "Accept",
-			value:      "text/plain",
+			name:       "existing",
+			headerName: "Content-Type",
+			expected:   "application/json",
 		},
 		{
-			name:       "comma value",
-			headerName: "X-Forwarded-For",
-			value:      "1.2.3.4, 4.5.6.7",
+			name:       "existing lowercase",
+			headerName: "content-type",
+			expected:   "application/json",
 		},
 		{
-			name:       "comma value overwrites",
-			headerName: "Vary",
-			value:      "Accept-Encoding, User-Agent",
+			name:       "set to empty",
+			headerName: "Custom",
 		},
 		{
-			name:       "empty value",
-			headerName: "aloha",
+			name:       "multi-field",
+			headerName: "Set-Cookie",
+			expected:   "proxy2",
 		},
 		{
-			name:       "empty value overwrites",
-			headerName: "Empty",
-		},
-		{
-			name:       "no value",
-			headerName: "Not Found",
+			name:       "set multi-field to empty",
+			headerName: "Set-Cookie",
+			expected:   "",
 		},
 	}
 
@@ -403,36 +453,152 @@ func Test_host_SetResponseHeaderValue(t *testing.T) {
 	for _, tt := range tests {
 		tc := tt
 		t.Run(tc.name, func(t *testing.T) {
-			respHeaders := tc.respHeaders
-			if respHeaders == nil {
-				respHeaders = newResponseHeader()
-				addTestHeaders(respHeaders)
-			}
-			ctx := variable.NewVariableContext(context.Background())
-			ctx = context.WithValue(ctx, filterKey{}, &filter{respHeaders: respHeaders})
+			ctx, _ := newTestResponseContext()
 
-			h.SetResponseHeaderValue(ctx, tc.headerName, tc.value)
-			if want, have := tc.value, strings.Join(headerValues(respHeaders, tc.headerName), "|"); want != have {
+			h.SetResponseHeaderValue(ctx, tc.headerName, tc.expected)
+			if want, have := tc.expected, strings.Join(h.GetResponseHeaderValues(ctx, tc.headerName), "|"); want != have {
 				t.Errorf("unexpected header, want: %v, have: %v", want, have)
 			}
 		})
 	}
 }
 
-// Note: senders are supposed to concatenate multiple fields with the same
-// name on comma, except the response header Set-Cookie. That said, a lot
-// of middleware don't know about this and may repeat other headers anyway.
-// See https://www.rfc-editoreqHeaders.org/rfc/rfc9110#section-5.2
-func addTestHeaders(h api.HeaderMap) {
-	h.Set("Content-Type", "text/plain")
-	// TODO: multi-field doesn't work, yet
-	// h.Add("Set-Cookie", "a")
-	// h.Add("Set Cookie", "b")
-	h.Set("Vary", "Accept-Encoding, User-Agent")
-	h.Set("Empty", "")
+func Test_host_AddResponseHeaderValue(t *testing.T) {
+	tests := []struct {
+		name       string
+		headerName string
+		value      string
+		expected   []string
+	}{
+		{
+			name:       "non-existing",
+			headerName: "new",
+			value:      "1",
+			expected:   []string{"1"},
+		},
+		{
+			name:       "empty",
+			headerName: "new",
+			expected:   []string{""},
+		},
+		{
+			name:       "existing",
+			headerName: "Set-Cookie",
+			value:      "g=h",
+			expected:   []string{"a=b, c=d", "e=f", "g=h"},
+		},
+		{
+			name:       "lowercase",
+			headerName: "set-Cookie",
+			value:      "g=h",
+			expected:   []string{"a=b, c=d", "e=f", "g=h"},
+		},
+		{
+			name:       "existing empty",
+			headerName: "Set-Cookie",
+			value:      "",
+			expected:   []string{"a=b, c=d", "e=f", ""},
+		},
+	}
+
+	h := host{}
+	for _, tt := range tests {
+		tc := tt
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, _ := newTestResponseContext()
+
+			h.AddResponseHeaderValue(ctx, tc.headerName, tc.value)
+			if want, have := tc.expected, h.GetResponseHeaderValues(ctx, tc.headerName); !reflect.DeepEqual(want, have) {
+				t.Errorf("unexpected header, want: %v, have: %v", want, have)
+			}
+		})
+	}
+}
+
+func Test_host_RemoveResponseHeaderValue(t *testing.T) {
+	tests := []struct {
+		name       string
+		headerName string
+	}{
+		{
+			name:       "doesn't exist",
+			headerName: "new",
+		},
+		{
+			name:       "empty",
+			headerName: "Empty",
+		},
+		{
+			name:       "exists",
+			headerName: "Custom",
+		},
+		{
+			name:       "lowercase",
+			headerName: "custom",
+		},
+		{
+			name:       "multi-field",
+			headerName: "Set-Cookie",
+		},
+	}
+
+	h := host{}
+	for _, tt := range tests {
+		tc := tt
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, _ := newTestResponseContext()
+
+			h.RemoveResponseHeader(ctx, tc.headerName)
+			if have := h.GetResponseHeaderValues(ctx, tc.headerName); len(have) > 0 {
+				t.Errorf("unexpected headers: %v", have)
+			}
+		})
+	}
+}
+
+func newTestRequestContext() (ctx context.Context, r mosnhttp.RequestHeader) {
+	r = newRequestHeader()
+	setTestRequestHeaders(r)
+	ctx = variable.NewVariableContext(context.Background())
+	ctx = context.WithValue(ctx, filterKey{}, &filter{reqHeaders: r})
+	return
+}
+
+func newTestResponseContext() (ctx context.Context, r mosnhttp.ResponseHeader) {
+	r = newResponseHeader()
+	setTestResponseHeaders(r)
+	ctx = variable.NewVariableContext(context.Background())
+	ctx = context.WithValue(ctx, filterKey{}, &filter{respHeaders: r})
+	return
+}
+
+func newRequestHeader() mosnhttp.RequestHeader {
+	return mosnhttp.RequestHeader{RequestHeader: &fasthttp.RequestHeader{}}
+}
+
+func newResponseHeader() mosnhttp.ResponseHeader {
+	return mosnhttp.ResponseHeader{ResponseHeader: &fasthttp.ResponseHeader{}}
+}
+
+func setTestRequestHeaders(h api.HeaderMap) {
+	setTestHeaders(h, test.RequestHeaders)
+}
+
+func setTestResponseHeaders(h api.HeaderMap) {
+	setTestHeaders(h, test.ResponseHeaders)
+}
+
+func setTestHeaders(h api.HeaderMap, t map[string][]string) {
+	for k, vs := range t {
+		h.Set(k, vs[0])
+		for _, v := range vs[1:] {
+			h.Add(k, v)
+		}
+	}
 }
 
 func headerValues(h api.HeaderMap, name string) (values []string) {
+	name = textproto.CanonicalMIMEHeaderKey(name)
 	h.Range(func(key, value string) bool {
 		if key == name {
 			values = append(values, value)
