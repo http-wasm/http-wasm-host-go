@@ -92,3 +92,23 @@ func binExample(name string) []byte {
 		return wasm
 	}
 }
+
+// Note: senders are supposed to concatenate multiple fields with the same
+// name on comma, except the response header Set-Cookie. That said, a lot
+// of middleware don't know about this and may repeat other headers anyway.
+// See https://www.rfc-editoreqHeaders.org/rfc/rfc9110#section-5.2
+
+var (
+	RequestHeaders = map[string][]string{
+		"Content-Type":    {"text/plain"},
+		"Custom":          {"1"},
+		"X-Forwarded-For": {"client, proxy1", "proxy2"},
+		"Empty":           {""},
+	}
+	ResponseHeaders = map[string][]string{
+		"Content-Type": {"text/plain"},
+		"Custom":       {"1"},
+		"Set-Cookie":   {"a=b, c=d", "e=f"},
+		"Empty":        {""},
+	}
+)

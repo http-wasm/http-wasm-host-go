@@ -6,6 +6,7 @@ import (
 	"os"
 	"runtime"
 
+	"github.com/tetratelabs/wazero"
 	mosnapi "mosn.io/api"
 	"mosn.io/mosn/pkg/log"
 	mosnhttp "mosn.io/mosn/pkg/protocol/http"
@@ -16,11 +17,6 @@ import (
 	internalhandler "github.com/http-wasm/http-wasm-host-go/internal/handler"
 )
 
-func init() {
-	// There's no API to configure a StreamFilter without using the global registry.
-	mosnapi.RegisterStream("httpwasm", factoryCreator)
-}
-
 // compile-time check to ensure proxyLogger implements api.Logger.
 var _ api.Logger = proxyLogger{}
 
@@ -29,10 +25,6 @@ type proxyLogger struct{}
 
 // IsEnabled implements the same method as documented on api.Logger.
 func (proxyLogger) IsEnabled(level api.LogLevel) bool {
-	return isLogLevelEnabled(level)
-}
-
-func isLogLevelEnabled(level api.LogLevel) bool {
 	realLevel := log.Proxy.GetLogLevel()
 	switch level {
 	case api.LogLevelError:
@@ -63,7 +55,13 @@ func (proxyLogger) Log(ctx context.Context, level api.LogLevel, message string) 
 	default: // same as api.LogLevelNone
 		return
 	}
+	// TODO: verify prefixing strategy with mosn lead
 	logFn(ctx, "wasm: %s", message)
+}
+
+func init() {
+	// There's no API to configure a StreamFilter without using the global registry.
+	mosnapi.RegisterStream("httpwasm", factoryCreator)
 }
 
 var _ mosnapi.StreamFilterFactoryCreator = factoryCreator
@@ -86,7 +84,11 @@ func factoryCreator(config map[string]interface{}) (mosnapi.StreamFilterChainFac
 	ctx := context.Background()
 	m, err := internalhandler.NewMiddleware(ctx, code, host{},
 		httpwasm.GuestConfig([]byte(conf)),
-		httpwasm.Logger(proxyLogger{}))
+		httpwasm.Logger(proxyLogger{}),
+		// TODO: verify stdio strategy with mosn lead
+		httpwasm.ModuleConfig(wazero.NewModuleConfig().
+			WithStdout(os.Stdout).
+			WithStderr(os.Stderr)))
 	runtime.SetFinalizer(m, func(m internalhandler.Middleware) {
 		m.Close(context.Background())
 	})
