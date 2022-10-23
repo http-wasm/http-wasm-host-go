@@ -178,8 +178,7 @@ func (g *guest) handle(ctx context.Context) (err error) {
 }
 
 // enableFeatures implements the WebAssembly host function handler.FuncEnableFeatures.
-func (m *middleware) enableFeatures(ctx context.Context, features handler.Features) handler.Features {
-	var enabled handler.Features
+func (m *middleware) enableFeatures(ctx context.Context, features handler.Features) (enabled handler.Features) {
 	if s, ok := ctx.Value(requestStateKey{}).(*requestState); ok {
 		s.features = m.host.EnableFeatures(ctx, s.features.WithEnabled(features))
 		enabled = s.features
@@ -270,7 +269,7 @@ func (m *middleware) getProtocolVersion(ctx context.Context, mod wazeroapi.Modul
 // getHeaderNames implements the WebAssembly host function
 // handler.FuncGetHeaderNames.
 func (m *middleware) getHeaderNames(ctx context.Context, mod wazeroapi.Module,
-	kind, buf, bufLimit uint32) (countLen uint64) {
+	kind handler.HeaderKind, buf, bufLimit uint32) (countLen uint64) {
 	var names []string
 	switch kind {
 	case handler.HeaderKindRequest:
@@ -290,7 +289,7 @@ func (m *middleware) getHeaderNames(ctx context.Context, mod wazeroapi.Module,
 // getHeaderValues implements the WebAssembly host function
 // handler.FuncGetHeaderValues.
 func (m *middleware) getHeaderValues(ctx context.Context, mod wazeroapi.Module,
-	kind, name, nameLen, buf, bufLimit uint32) (countLen uint64) {
+	kind handler.HeaderKind, name, nameLen, buf, bufLimit uint32) (countLen uint64) {
 	if nameLen == 0 {
 		panic("HTTP header name cannot be empty")
 	}
@@ -315,7 +314,7 @@ func (m *middleware) getHeaderValues(ctx context.Context, mod wazeroapi.Module,
 // setHeaderValue implements the WebAssembly host function
 // handler.FuncSetHeaderValue.
 func (m *middleware) setHeaderValue(ctx context.Context, mod wazeroapi.Module,
-	kind, name, nameLen, value, valueLen uint32) {
+	kind handler.HeaderKind, name, nameLen, value, valueLen uint32) {
 	if nameLen == 0 {
 		panic("HTTP header name cannot be empty")
 	}
@@ -340,7 +339,7 @@ func (m *middleware) setHeaderValue(ctx context.Context, mod wazeroapi.Module,
 // addHeaderValue implements the WebAssembly host function
 // handler.FuncAddHeader.
 func (m *middleware) addHeaderValue(ctx context.Context, mod wazeroapi.Module,
-	kind, name, nameLen, value, valueLen uint32) {
+	kind handler.HeaderKind, name, nameLen, value, valueLen uint32) {
 	if nameLen == 0 {
 		panic("HTTP header name cannot be empty")
 	}
@@ -365,7 +364,7 @@ func (m *middleware) addHeaderValue(ctx context.Context, mod wazeroapi.Module,
 // removeHeader implements the WebAssembly host function
 // handler.FuncRemoveHeader.
 func (m *middleware) removeHeader(ctx context.Context, mod wazeroapi.Module,
-	kind, name, nameLen uint32) {
+	kind handler.HeaderKind, name, nameLen uint32) {
 	if nameLen == 0 {
 		panic("HTTP header name cannot be empty")
 	}
@@ -388,7 +387,7 @@ func (m *middleware) removeHeader(ctx context.Context, mod wazeroapi.Module,
 
 // readBody implements the WebAssembly host function handler.FuncReadBody.
 func (m *middleware) readBody(ctx context.Context, mod wazeroapi.Module,
-	kind, buf, bufLimit uint32) (eofLen uint64) {
+	kind handler.BodyKind, buf, bufLimit uint32) (eofLen uint64) {
 
 	var r io.ReadCloser
 	switch kind {
@@ -417,7 +416,7 @@ func (m *middleware) readBody(ctx context.Context, mod wazeroapi.Module,
 
 // writeBody implements the WebAssembly host function handler.FuncWriteBody.
 func (m *middleware) writeBody(ctx context.Context, mod wazeroapi.Module,
-	kind, buf, bufLen uint32) {
+	kind handler.BodyKind, buf, bufLen uint32) {
 
 	var w io.Writer
 	switch kind {
@@ -565,7 +564,7 @@ func (m *middleware) compileHost(ctx context.Context) (wazero.CompiledModule, er
 	}
 }
 
-func mustHeaderMutable(ctx context.Context, op string, kind uint32) {
+func mustHeaderMutable(ctx context.Context, op string, kind handler.HeaderKind) {
 	switch kind {
 	case handler.HeaderKindRequest:
 		_ = mustBeforeNext(ctx, op, "request header")
