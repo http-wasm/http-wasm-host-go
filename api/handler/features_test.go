@@ -26,8 +26,8 @@ func TestFeatures(t *testing.T) {
 			feature: 1,
 		},
 		{
-			name:    "63 is the largest feature flag", // because uint64
-			feature: 1 << 63,
+			name:    "31 is the largest feature flag", // because uint32
+			feature: 1 << 31,
 		},
 	}
 
@@ -61,7 +61,7 @@ func TestFeatures_String(t *testing.T) {
 		{name: "buffer-response", feature: FeatureBufferResponse, expected: "buffer-response"},
 		{name: "trailers", feature: FeatureTrailers, expected: "trailers"},
 		{name: "all", feature: FeatureBufferRequest | FeatureBufferResponse | FeatureTrailers, expected: "buffer-request|buffer-response|trailers"},
-		{name: "undefined", feature: 1 << 63, expected: ""},
+		{name: "undefined", feature: 1 << 31, expected: ""},
 	}
 
 	for _, tt := range tests {

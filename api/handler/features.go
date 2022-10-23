@@ -7,7 +7,7 @@ import (
 // Features is a bit flag of features a host may support.
 //
 // Note: Numeric values are not intended to be interpreted except as bit flags.
-type Features uint64
+type Features uint32
 
 const (
 	// FeatureBufferRequest buffers the HTTP request body when reading, so that
@@ -63,7 +63,7 @@ func (f Features) IsEnabled(feature Features) bool {
 // String implements fmt.Stringer by returning each enabled feature.
 func (f Features) String() string {
 	var builder strings.Builder
-	for i := 0; i <= 63; i++ { // cycle through all bits to reduce code and maintenance
+	for i := 0; i <= 31; i++ { // cycle through all bits to reduce code and maintenance
 		target := Features(1 << i)
 		if f.IsEnabled(target) {
 			if name := featureName(target); name != "" {

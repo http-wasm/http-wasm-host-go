@@ -178,16 +178,16 @@ func (g *guest) handle(ctx context.Context) (err error) {
 }
 
 // enableFeatures implements the WebAssembly host function handler.FuncEnableFeatures.
-func (m *middleware) enableFeatures(ctx context.Context, features uint64) uint64 {
+func (m *middleware) enableFeatures(ctx context.Context, features handler.Features) handler.Features {
 	var enabled handler.Features
 	if s, ok := ctx.Value(requestStateKey{}).(*requestState); ok {
-		s.features = m.host.EnableFeatures(ctx, s.features.WithEnabled(handler.Features(features)))
+		s.features = m.host.EnableFeatures(ctx, s.features.WithEnabled(features))
 		enabled = s.features
 	} else {
-		m.features = m.host.EnableFeatures(ctx, m.features.WithEnabled(handler.Features(features)))
+		m.features = m.host.EnableFeatures(ctx, m.features.WithEnabled(features))
 		enabled = m.features
 	}
-	return uint64(enabled)
+	return enabled
 }
 
 // getConfig implements the WebAssembly host function handler.FuncGetConfig.
