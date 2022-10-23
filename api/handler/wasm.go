@@ -20,7 +20,7 @@ package handler
 //   - "Content-Type\0Content-Length\0": 2<<32|28
 type CountLen = uint64
 
-type BodyKind = uint32
+type BodyKind uint32
 
 const (
 	// BodyKindRequest represents an operation on an HTTP request body.
@@ -53,7 +53,7 @@ const (
 	BodyKindResponse BodyKind = 1
 )
 
-type HeaderKind = uint32
+type HeaderKind uint32
 
 const (
 	// HeaderKindRequest represents an operation on HTTP request headers.
