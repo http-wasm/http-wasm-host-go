@@ -5,14 +5,16 @@ import (
 	"context"
 
 	wazeroapi "github.com/tetratelabs/wazero/api"
+
+	"github.com/http-wasm/http-wasm-host-go/api/handler"
 )
 
 func writeNULTerminated(
 	ctx context.Context,
 	mem wazeroapi.Memory,
-	buf, bufLimit uint32,
+	buf uint32, bufLimit handler.BufLimit,
 	input []string,
-) (countLen uint64) {
+) (countLen handler.CountLen) {
 	count := uint32(len(input))
 	if count == 0 {
 		return
@@ -23,7 +25,7 @@ func writeNULTerminated(
 		byteCount += uint32(len(s))
 	}
 
-	countLen = uint64(count)<<32 | uint64(byteCount)
+	countLen = handler.CountLen(count)<<32 | handler.CountLen(byteCount)
 
 	if byteCount > bufLimit {
 		return // the guest can retry with a larger limit

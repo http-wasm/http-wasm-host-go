@@ -191,7 +191,7 @@ func (m *middleware) enableFeatures(ctx context.Context, features handler.Featur
 
 // getConfig implements the WebAssembly host function handler.FuncGetConfig.
 func (m *middleware) getConfig(ctx context.Context, mod wazeroapi.Module,
-	buf, bufLimit uint32) (len uint32) {
+	buf uint32, bufLimit handler.BufLimit) (len uint32) {
 	return writeIfUnderLimit(ctx, mod, buf, bufLimit, m.guestConfig)
 }
 
@@ -218,7 +218,7 @@ func (m *middleware) log(ctx context.Context, mod wazeroapi.Module,
 
 // getMethod implements the WebAssembly host function handler.FuncGetMethod.
 func (m *middleware) getMethod(ctx context.Context, mod wazeroapi.Module,
-	buf, bufLimit uint32) (len uint32) {
+	buf uint32, bufLimit handler.BufLimit) (len uint32) {
 	method := m.host.GetMethod(ctx)
 	return writeStringIfUnderLimit(ctx, mod, buf, bufLimit, method)
 }
@@ -239,7 +239,7 @@ func (m *middleware) setMethod(ctx context.Context, mod wazeroapi.Module,
 
 // getURI implements the WebAssembly host function handler.FuncGetURI.
 func (m *middleware) getURI(ctx context.Context, mod wazeroapi.Module,
-	buf, bufLimit uint32) (len uint32) {
+	buf uint32, bufLimit handler.BufLimit) (len uint32) {
 	uri := m.host.GetURI(ctx)
 	return writeStringIfUnderLimit(ctx, mod, buf, bufLimit, uri)
 }
@@ -258,7 +258,7 @@ func (m *middleware) setURI(ctx context.Context, mod wazeroapi.Module,
 // getProtocolVersion implements the WebAssembly host function
 // handler.FuncGetProtocolVersion.
 func (m *middleware) getProtocolVersion(ctx context.Context, mod wazeroapi.Module,
-	buf, bufLimit uint32) uint32 {
+	buf uint32, bufLimit handler.BufLimit) uint32 {
 	protocolVersion := m.host.GetProtocolVersion(ctx)
 	if len(protocolVersion) == 0 {
 		panic("HTTP protocol version cannot be empty")
@@ -269,7 +269,7 @@ func (m *middleware) getProtocolVersion(ctx context.Context, mod wazeroapi.Modul
 // getHeaderNames implements the WebAssembly host function
 // handler.FuncGetHeaderNames.
 func (m *middleware) getHeaderNames(ctx context.Context, mod wazeroapi.Module,
-	kind handler.HeaderKind, buf, bufLimit uint32) (countLen uint64) {
+	kind handler.HeaderKind, buf uint32, bufLimit handler.BufLimit) (countLen handler.CountLen) {
 	var names []string
 	switch kind {
 	case handler.HeaderKindRequest:
@@ -289,7 +289,7 @@ func (m *middleware) getHeaderNames(ctx context.Context, mod wazeroapi.Module,
 // getHeaderValues implements the WebAssembly host function
 // handler.FuncGetHeaderValues.
 func (m *middleware) getHeaderValues(ctx context.Context, mod wazeroapi.Module,
-	kind handler.HeaderKind, name, nameLen, buf, bufLimit uint32) (countLen uint64) {
+	kind handler.HeaderKind, name, nameLen, buf uint32, bufLimit handler.BufLimit) (countLen handler.CountLen) {
 	if nameLen == 0 {
 		panic("HTTP header name cannot be empty")
 	}
@@ -387,7 +387,7 @@ func (m *middleware) removeHeader(ctx context.Context, mod wazeroapi.Module,
 
 // readBody implements the WebAssembly host function handler.FuncReadBody.
 func (m *middleware) readBody(ctx context.Context, mod wazeroapi.Module,
-	kind handler.BodyKind, buf, bufLimit uint32) (eofLen uint64) {
+	kind handler.BodyKind, buf uint32, bufLimit handler.BufLimit) (eofLen handler.EOFLen) {
 
 	var r io.ReadCloser
 	switch kind {
@@ -470,7 +470,7 @@ func (m *middleware) setStatusCode(ctx context.Context, statusCode uint32) {
 	m.host.SetStatusCode(ctx, statusCode)
 }
 
-func readBody(ctx context.Context, mod wazeroapi.Module, buf, bufLimit uint32, r io.Reader) (eofLen uint64) {
+func readBody(ctx context.Context, mod wazeroapi.Module, buf uint32, bufLimit handler.BufLimit, r io.Reader) (eofLen uint64) {
 	// buf_limit 0 serves no purpose as implementations won't return EOF on it.
 	if bufLimit == 0 {
 		panic(fmt.Errorf("buf_limit==0 reading body"))

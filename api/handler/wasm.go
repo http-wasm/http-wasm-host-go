@@ -1,5 +1,10 @@
 package handler
 
+// BufLimit is the possibly zero maximum length of a result value to write in
+// bytes. If the actual value is larger than this, nothing is written to
+// memory.
+type BufLimit = uint32
+
 // CountLen describes a possible empty sequence of NUL-terminated strings. For
 // compatability with WebAssembly Core Specification 1.0, two uint32 values are
 // combined into a single uint64 in the following order:
@@ -19,6 +24,27 @@ package handler
 //   - "Accept\0": 1<<32|7
 //   - "Content-Type\0Content-Length\0": 2<<32|28
 type CountLen = uint64
+
+// EOFLen is the result of FuncReadBody which allows callers to know if the
+// bytes returned are the end of the stream. For compatability with WebAssembly
+// Core Specification 1.0, two uint32 values are combined into a single uint64
+// in the following order:
+//
+//   - eof: the body is exhausted.
+//   - len: possibly zero length of bytes read from the body.
+//
+// Here's how to split the results:
+//
+//   - eof: `uint32(eofLen >> 32)`
+//   - len: `uint32(eofLen)`
+//
+// # Examples
+//
+//   - 1<<32|0 (4294967296): EOF and no bytes were read
+//   - 0<<32|16 (16): 16 bytes were read and there may be more available.
+//
+// Note: `EOF` is not an error, so process `len` bytes returned regardless.
+type EOFLen = uint64
 
 type BodyKind uint32
 
@@ -105,7 +131,7 @@ const (
 	FuncEnableFeatures = "enable_features"
 
 	// FuncGetConfig writes configuration from the host to memory if it exists
-	// and isn't larger than `buf-limit`. The result is its length in bytes.
+	// and isn't larger than BufLimit. The result is its length in bytes.
 	//
 	// Note: Configuration is determined by the guest and is not necessarily
 	// UTF-8 encoded.
@@ -134,7 +160,7 @@ const (
 	FuncHandle = "handle"
 
 	// FuncGetMethod writes the method to memory if it isn't larger than
-	// `buf-limit`. The result is its length in bytes. Ex. "GET"
+	// BufLimit. The result is its length in bytes. Ex. "GET"
 	//
 	// TODO: document on http-wasm-abi
 	FuncGetMethod = "get_method"
@@ -144,7 +170,7 @@ const (
 	// TODO: document on http-wasm-abi
 	FuncSetMethod = "set_method"
 
-	// FuncGetURI writes the URI to memory if it isn't larger than `buf-limit`.
+	// FuncGetURI writes the URI to memory if it isn't larger than BufLimit.
 	// The result is its length in bytes. Ex. "/v1.0/hi?name=panda"
 	//
 	// Note: The URI may include query parameters.
@@ -162,7 +188,7 @@ const (
 	FuncSetURI = "set_uri"
 
 	// FuncGetProtocolVersion writes the HTTP protocol version to memory if it
-	// isn't larger than `buf-limit`. The result is its length in bytes.
+	// isn't larger than BufLimit. The result is its length in bytes.
 	// Ex. "HTTP/1.1"
 	//
 	// See https://www.rfc-editor.org/rfc/rfc9110#name-protocol-version
@@ -171,14 +197,14 @@ const (
 
 	// FuncGetHeaderNames writes all header names for the given HeaderKind,
 	// NUL-terminated, to memory if the encoded length isn't larger than
-	// `buf-limit`. The result is regardless of whether memory was written.
+	// BufLimit. CountLen is returned regardless of whether memory was written.
 	//
 	// TODO: document on http-wasm-abi
 	FuncGetHeaderNames = "get_header_names"
 
 	// FuncGetHeaderValues writes all header names of the given HeaderKind and
 	// name, NUL-terminated, to memory if the encoded length isn't larger than
-	// `buf-limit`. The result is regardless of whether memory was written.
+	// BufLimit. CountLen is returned regardless of whether memory was written.
 	//
 	// TODO: document on http-wasm-abi
 	FuncGetHeaderValues = "get_header_values"
@@ -200,15 +226,11 @@ const (
 	// TODO: document on http-wasm-abi
 	FuncRemoveHeader = "remove_header"
 
-	// FuncReadBody reads up to `buf_limit` bytes remaining in the BodyKind
-	// body into memory at offset `buf`. A zero `buf_limit` will panic.
+	// FuncReadBody reads up to BufLimit bytes remaining in the BodyKind body
+	// into memory at offset `buf`. A zero BufLimit will panic.
 	//
-	// The result is `0 or EOF(1) << 32|len`, where `len` is the length in bytes
-	// read.
-	//
-	// `EOF` means the body is exhausted, and future calls return `1<<32|0`
-	// (4294967296). `EOF` is not an error, so process `len` bytes returned
-	// regardless of `EOF`.
+	// The result is EOFLen, indicating the count of bytes read and whether
+	// there may be more available.
 	//
 	// Unlike `get_XXX` functions, this function is stateful, so repeated calls
 	// reads what's remaining in the stream, as opposed to starting from zero.
