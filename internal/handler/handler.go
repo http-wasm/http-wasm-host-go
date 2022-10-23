@@ -601,7 +601,7 @@ func mustRead(ctx context.Context, mem wazeroapi.Memory, fieldName string, offse
 	return buf
 }
 
-func writeIfUnderLimit(ctx context.Context, mod wazeroapi.Module, offset, limit uint32, v []byte) (vLen uint32) {
+func writeIfUnderLimit(ctx context.Context, mod wazeroapi.Module, offset, limit handler.BufLimit, v []byte) (vLen uint32) {
 	vLen = uint32(len(v))
 	if vLen > limit {
 		return // caller can retry with a larger limit
@@ -612,7 +612,7 @@ func writeIfUnderLimit(ctx context.Context, mod wazeroapi.Module, offset, limit 
 	return
 }
 
-func writeStringIfUnderLimit(ctx context.Context, mod wazeroapi.Module, offset, limit uint32, v string) (vLen uint32) {
+func writeStringIfUnderLimit(ctx context.Context, mod wazeroapi.Module, offset, limit handler.BufLimit, v string) (vLen uint32) {
 	vLen = uint32(len(v))
 	if vLen > limit {
 		return // caller can retry with a larger limit
