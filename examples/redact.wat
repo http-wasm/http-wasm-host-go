@@ -5,8 +5,8 @@
   ;; enable_features tries to enable the given features and returns the entire
   ;; feature bitflag supported by the host.
   (import "http-handler" "enable_features" (func $enable_features
-    (param $enable_features i64)
-    (result (; enabled_features ;) i64)))
+    (param $enable_features i32)
+    (result (; enabled_features ;) i32)))
 
   ;; get_config writes configuration from the host to memory if it exists and
   ;; isn't larger than $buf_limit. The result is its length in bytes.
@@ -66,19 +66,19 @@
       (then unreachable)))
 
   ;; required_features := feature_buffer_request|feature_buffer_response
-  (global $required_features i64 (i64.const 3))
+  (global $required_features i32 (i32.const 3))
 
   ;; enable_buffering ensures we can inspect request and response bodies
   ;; without interfering with the next handler.
   (func $enable_buffering
-    (local $enabled_features i64)
+    (local $enabled_features i32)
 
     ;; enabled_features := enable_features(required_features)
     (local.set $enabled_features
       (call $enable_features (global.get $required_features)))
 
     ;; if enabled_features&required_features == 0 { panic }
-    (if (i64.eqz (i64.and
+    (if (i32.eqz (i32.and
           (local.get $enabled_features)
           (global.get $required_features)))
       (then unreachable)))
