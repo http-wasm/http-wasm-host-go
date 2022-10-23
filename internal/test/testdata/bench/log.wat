@@ -1,7 +1,8 @@
 (module $log
 
-  (import "http-handler" "log"
-    (func $log (param i32 i32)))
+  (import "http-handler" "log" (func $log
+    (param $level i32)
+    (param $buf i32) (param $buf_limit i32)))
 
   (memory (export "memory") 1 1 (; 1 page==64KB ;))
   (global $message i32 (i32.const 0))
@@ -10,6 +11,7 @@
 
   (func $handle (export "handle")
     (call $log
+      (i32.const 1) ;; INFO
       (global.get $message)
       (global.get $message_len)))
 )
