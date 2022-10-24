@@ -1,17 +1,17 @@
 (module $uri
 
-  (import "http-handler" "get_uri" (func $get_uri
+  (import "http_handler" "get_uri" (func $get_uri
     (param $buf i32) (param $buf_limit i32)
     (result (; len ;) i32)))
 
-  (import "http-handler" "set_uri" (func $set_uri
+  (import "http_handler" "set_uri" (func $set_uri
     (param $uri i32) (param $uri_len i32)))
 
-  (import "http-handler" "write_body" (func $write_body
+  (import "http_handler" "write_body" (func $write_body
     (param $kind i32)
     (param $buf i32) (param $buf_len i32)))
 
-  (import "http-handler" "next" (func $next))
+  (import "http_handler" "next" (func $next))
 
   (memory (export "memory") 1 1 (; 1 page==64KB ;))
 

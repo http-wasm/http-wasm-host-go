@@ -1,5 +1,5 @@
 (module $remove_header
-  (import "http-handler" "remove_header"
+  (import "http_handler" "remove_header"
     (func $remove_header (param i32 i32 i32)))
 
   (memory (export "memory") 1 1 (; 1 page==64KB ;))

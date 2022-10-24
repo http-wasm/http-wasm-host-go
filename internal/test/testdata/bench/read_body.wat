@@ -1,6 +1,6 @@
 (module $read_body
 
-  (import "http-handler" "read_body" (func $read_body
+  (import "http_handler" "read_body" (func $read_body
     (param $kind i32)
     (param $buf i32) (param $buf_len i32)
     (result (; 0 or EOF(1) << 32 | len ;) i64)))

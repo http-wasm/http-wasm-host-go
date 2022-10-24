@@ -1,5 +1,5 @@
 (module $set_uri
-  (import "http-handler" "set_uri"
+  (import "http_handler" "set_uri"
     (func $set_uri (param i32 i32)))
 
   (memory (export "memory") 1 1 (; 1 page==64KB ;))

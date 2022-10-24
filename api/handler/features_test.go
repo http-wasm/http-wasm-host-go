@@ -57,10 +57,10 @@ func TestFeatures_String(t *testing.T) {
 		expected string
 	}{
 		{name: "none", feature: 0, expected: ""},
-		{name: "buffer-request", feature: FeatureBufferRequest, expected: "buffer-request"},
-		{name: "buffer-response", feature: FeatureBufferResponse, expected: "buffer-response"},
+		{name: "buffer_request", feature: FeatureBufferRequest, expected: "buffer_request"},
+		{name: "buffer_response", feature: FeatureBufferResponse, expected: "buffer_response"},
 		{name: "trailers", feature: FeatureTrailers, expected: "trailers"},
-		{name: "all", feature: FeatureBufferRequest | FeatureBufferResponse | FeatureTrailers, expected: "buffer-request|buffer-response|trailers"},
+		{name: "all", feature: FeatureBufferRequest | FeatureBufferResponse | FeatureTrailers, expected: "buffer_request|buffer_response|trailers"},
 		{name: "undefined", feature: 1 << 31, expected: ""},
 	}
 

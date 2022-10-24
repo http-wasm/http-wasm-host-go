@@ -1,6 +1,6 @@
 (module $get_header_values
 
-  (import "http-handler" "get_header_values" (func $get_header_values
+  (import "http_handler" "get_header_values" (func $get_header_values
     (param $kind i32)
     (param $name i32) (param $name_len i32)
     (param $buf i32) (param $buf_limit i32)

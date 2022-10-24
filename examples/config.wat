@@ -4,23 +4,23 @@
 (module $config
   ;; enable_features tries to enable the given features and returns the entire
   ;; feature bitflag supported by the host.
-  (import "http-handler" "enable_features" (func $enable_features
+  (import "http_handler" "enable_features" (func $enable_features
     (param $enable_features i32)
     (result (; enabled_features ;) i32)))
 
   ;; get_config writes configuration from the host to memory if it exists and
   ;; isn't larger than $buf_limit. The result is its length in bytes.
-  (import "http-handler" "get_config" (func $get_config
+  (import "http_handler" "get_config" (func $get_config
     (param $buf i32) (param $buf_limit i32)
     (result (; len ;) i32)))
 
   ;; next dispatches control to the next handler on the host.
-  (import "http-handler" "next" (func $next))
+  (import "http_handler" "next" (func $next))
 
   ;; handle just calls next.
   (func (export "handle") (call $next))
 
-  ;; http-wasm guests are required to export "memory", so that imported
+  ;; http_handler guests are required to export "memory", so that imported
   ;; functions like "get_header" can read memory.
   (memory (export "memory") 1 1 (; 1 page==64KB ;))
 

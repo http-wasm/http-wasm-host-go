@@ -5,12 +5,12 @@
 
   ;; log_enabled returns 1 if the $level is enabled. This value may be cached
   ;; at request granularity.
-  (import "http-handler" "log_enabled" (func $log_enabled
+  (import "http_handler" "log_enabled" (func $log_enabled
     (param $level i32)
     (result (; 0 or enabled(1) ;) i32)))
 
   ;; logs a message to the host's logs at the given $level.
-  (import "http-handler" "log" (func $log
+  (import "http_handler" "log" (func $log
     (param $level i32)
     (param $buf i32) (param $buf_limit i32)))
 

@@ -1,6 +1,6 @@
 (module $write_body
 
-  (import "http-handler" "write_body" (func $write_body
+  (import "http_handler" "write_body" (func $write_body
     (param $kind i32)
     (param $buf i32) (param $buf_len i32)))
 

@@ -6,27 +6,27 @@
   ;; get_header_values writes all header names of the given $kind and $name,
   ;; NUL-terminated, to memory if the encoded length isn't larger than
   ;; $buf_limit. The result is regardless of whether memory was written.
-  (import "http-handler" "get_header_values" (func $get_header_values
+  (import "http_handler" "get_header_values" (func $get_header_values
     (param $kind i32)
     (param $name i32) (param $name_len i32)
     (param $buf i32) (param $buf_limit i32)
     (result (; count << 32| len ;) i64)))
 
   ;; next dispatches control to the next handler on the host.
-  (import "http-handler" "next" (func $next))
+  (import "http_handler" "next" (func $next))
 
   ;; set_header_value overwrites a header of the given $kind and $name with a
   ;; single value.
-  (import "http-handler" "set_header_value" (func $set_header_value
+  (import "http_handler" "set_header_value" (func $set_header_value
     (param $kind i32)
     (param $name i32) (param $name_len i32)
     (param $value i32) (param $value_len i32)))
 
   ;; set_status_code overrides the status code. The default is 200.
-  (import "http-handler" "set_status_code" (func $set_status_code
+  (import "http_handler" "set_status_code" (func $set_status_code
     (param $status_code i32)))
 
-  ;; http-wasm guests are required to export "memory", so that imported
+  ;; http_handler guests are required to export "memory", so that imported
   ;; functions like "get_header" can read memory.
   (memory (export "memory") 1 1 (; 1 page==64KB ;))
 

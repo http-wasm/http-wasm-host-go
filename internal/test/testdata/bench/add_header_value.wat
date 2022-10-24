@@ -1,6 +1,6 @@
 (module $add_header_value
 
-  (import "http-handler" "add_header_value" (func $add_header_value
+  (import "http_handler" "add_header_value" (func $add_header_value
     (param $kind i32)
     (param $name i32) (param $name_len i32)
     (param $value i32) (param $value_len i32)))
