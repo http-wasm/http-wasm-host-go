@@ -1,6 +1,6 @@
 (module $get_header_names
 
-  (import "http-handler" "get_header_names" (func $get_header_names
+  (import "http_handler" "get_header_names" (func $get_header_names
     (param $kind i32)
     (param $buf i32) (param $buf_limit i32)
     (result (; count << 32| len ;) i64)))

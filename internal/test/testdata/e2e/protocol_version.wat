@@ -1,10 +1,10 @@
 (module $protocol_version
 
-  (import "http-handler" "get_protocol_version" (func $get_protocol_version
+  (import "http_handler" "get_protocol_version" (func $get_protocol_version
     (param $buf i32) (param $buf_limit i32)
     (result (; len ;) i32)))
 
-  (import "http-handler" "write_body" (func $write_body
+  (import "http_handler" "write_body" (func $write_body
     (param $kind i32)
     (param $buf i32) (param $buf_len i32)))
 

@@ -1,17 +1,17 @@
 (module $method
 
-  (import "http-handler" "get_method" (func $get_method
+  (import "http_handler" "get_method" (func $get_method
     (param $buf i32) (param $buf_limit i32)
     (result (; len ;) i32)))
 
-  (import "http-handler" "set_method" (func $set_method
+  (import "http_handler" "set_method" (func $set_method
     (param $method i32) (param $method_len i32)))
 
-  (import "http-handler" "write_body" (func $write_body
+  (import "http_handler" "write_body" (func $write_body
     (param $kind i32)
     (param $buf i32) (param $buf_len i32)))
 
-  (import "http-handler" "next" (func $next))
+  (import "http_handler" "next" (func $next))
 
   (memory (export "memory") 1 1 (; 1 page==64KB ;))
 

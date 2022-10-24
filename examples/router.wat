@@ -4,31 +4,31 @@
 (module $router
   ;; get_uri writes the URI to memory if it isn't larger than $buf_limit. The
   ;; result is its length in bytes.
-  (import "http-handler" "get_uri" (func $get_uri
+  (import "http_handler" "get_uri" (func $get_uri
     (param $buf i32) (param $buf_limit i32)
     (result (; len ;) i32)))
 
   ;; set_uri overwrites the URI with one read from memory.
-  (import "http-handler" "set_uri" (func $set_uri
+  (import "http_handler" "set_uri" (func $set_uri
     (param $uri i32) (param $uri_len i32)))
 
   ;; next dispatches control to the next handler on the host.
-  (import "http-handler" "next" (func $next))
+  (import "http_handler" "next" (func $next))
 
   ;; set_header_value overwrites a header of the given $kind and $name with a
   ;; single value.
-  (import "http-handler" "set_header_value" (func $set_header_value
+  (import "http_handler" "set_header_value" (func $set_header_value
     (param $kind i32)
     (param $name i32) (param $name_len i32)
     (param $value i32) (param $value_len i32)))
 
   ;; write_body reads $buf_len bytes at memory offset `buf` and writes them to
   ;; the pending $kind body.
-  (import "http-handler" "write_body" (func $write_body
+  (import "http_handler" "write_body" (func $write_body
     (param $kind i32)
     (param $buf i32) (param $buf_len i32)))
 
-  ;; http-wasm guests are required to export "memory", so that imported
+  ;; http_handler guests are required to export "memory", so that imported
   ;; functions like "log" can read memory.
   (memory (export "memory") 1 1 (; 1 page==64KB ;))
 

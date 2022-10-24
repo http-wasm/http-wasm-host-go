@@ -5,7 +5,7 @@
 # http-wasm Host Library for Go
 
 [http-wasm][1] defines HTTP functions implemented in [WebAssembly][2]. This
-repository includes [http-handler ABI][3] middleware for various HTTP server
+repository includes [http_handler ABI][3] middleware for various HTTP server
 libraries written in Go.
 
 * [nethttp](handler/nethttp): [net/http Handler][4]
@@ -22,7 +22,7 @@ wasted energy in the case that the concept isn't acceptable at all.
 
 [1]: https://github.com/http-wasm
 [2]: https://webassembly.org/
-[3]: https://github.com/http-wasm/http-wasm-abi/blob/main/http-handler/http-handler.wit.md
+[3]: https://github.com/http-wasm/http-wasm-abi/blob/main/http_handler/http_handler.wit.md
 [4]: https://pkg.go.dev/net/http#Handler
 [5]: https://github.com/corazawaf/coraza-proxy-wasm
 [6]: https://github.com/http-wasm/components-contrib/

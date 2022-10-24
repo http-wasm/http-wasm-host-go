@@ -80,9 +80,9 @@ func (f Features) String() string {
 func featureName(f Features) string {
 	switch f {
 	case FeatureBufferRequest:
-		return "buffer-request"
+		return "buffer_request"
 	case FeatureBufferResponse:
-		return "buffer-response"
+		return "buffer_response"
 	case FeatureTrailers:
 		return "trailers"
 	}

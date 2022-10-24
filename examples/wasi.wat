@@ -9,26 +9,26 @@
 
   ;; enable_features tries to enable the given features and returns the entire
   ;; feature bitflag supported by the host.
-  (import "http-handler" "enable_features" (func $enable_features
+  (import "http_handler" "enable_features" (func $enable_features
     (param $enable_features i32)
     (result (; enabled_features ;) i32)))
 
   ;; get_method writes the method to memory if it isn't larger than $buf_limit.
   ;; The result is its length in bytes. Ex. "GET"
-  (import "http-handler" "get_method" (func $get_method
+  (import "http_handler" "get_method" (func $get_method
     (param $buf i32) (param $buf_limit i32)
     (result (; len ;) i32)))
 
   ;; get_uri writes the URI to memory if it isn't larger than $buf_limit.
   ;; The result is its length in bytes. Ex. "/v1.0/hi?name=panda"
-  (import "http-handler" "get_uri" (func $get_uri
+  (import "http_handler" "get_uri" (func $get_uri
     (param $buf i32) (param $buf_limit i32)
     (result (; len ;) i32)))
 
   ;; get_protocol_version writes the HTTP protocol version to memory if it
-  ;; isn't larger than `buf-limit`. The result is its length in bytes.
+  ;; isn't larger than `buf_limit`. The result is its length in bytes.
   ;; Ex. "HTTP/1.1"
-  (import "http-handler" "get_protocol_version" (func $get_protocol_version
+  (import "http_handler" "get_protocol_version" (func $get_protocol_version
     (param $buf i32) (param $buf_limit i32)
     (result (; len ;) i32)))
 
@@ -36,7 +36,7 @@
   ;; get_header_names writes all header names for the given $kind,
   ;; NUL-terminated, to memory if the encoded length isn't larger than
   ;; $buf_limit. The result is regardless of whether memory was written.
-  (import "http-handler" "get_header_names" (func $get_header_names
+  (import "http_handler" "get_header_names" (func $get_header_names
     (param $kind i32)
     (param $buf i32) (param $buf_limit i32)
     (result (; count << 32| len ;) i64)))
@@ -44,7 +44,7 @@
   ;; get_header_values writes all header names of the given $kind and $name,
   ;; NUL-terminated, to memory if the encoded length isn't larger than
   ;; $buf_limit. The result is regardless of whether memory was written.
-  (import "http-handler" "get_header_values" (func $get_header_values
+  (import "http_handler" "get_header_values" (func $get_header_values
     (param $kind i32)
     (param $name i32) (param $name_len i32)
     (param $buf i32) (param $buf_limit i32)
@@ -55,25 +55,25 @@
   ;;
   ;; The result is `0 or EOF(1) << 32|len`, where `len` is the length in bytes
   ;; read.
-  (import "http-handler" "read_body" (func $read_body
+  (import "http_handler" "read_body" (func $read_body
     (param $kind i32)
     (param $buf i32) (param $buf_len i32)
     (result (; 0 or EOF(1) << 32 | len ;) i64)))
 
   ;; write_body reads $buf_len bytes at memory offset `buf` and writes them to
   ;; the pending $kind body.
-  (import "http-handler" "write_body" (func $write_body
+  (import "http_handler" "write_body" (func $write_body
     (param $kind i32)
     (param $buf i32) (param $buf_len i32)))
 
   ;; next dispatches control to the next handler on the host.
-  (import "http-handler" "next" (func $next))
+  (import "http_handler" "next" (func $next))
 
   ;; get_status_code returnts the status code produced by $next.
-  (import "http-handler" "get_status_code" (func $get_status_code
+  (import "http_handler" "get_status_code" (func $get_status_code
     (result (; status_code ;) i32)))
 
-  ;; http-wasm guests are required to export "memory", so that imported
+  ;; http_handler guests are required to export "memory", so that imported
   ;; functions like "fd_write" can read memory.
   (memory (export "memory") 1 1 (; 1 page==64KB ;))
 

@@ -1,6 +1,6 @@
 (module $log
 
-  (import "http-handler" "log" (func $log
+  (import "http_handler" "log" (func $log
     (param $level i32)
     (param $buf i32) (param $buf_limit i32)))
 

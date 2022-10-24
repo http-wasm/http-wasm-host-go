@@ -4,13 +4,13 @@
 (module $redact
   ;; enable_features tries to enable the given features and returns the entire
   ;; feature bitflag supported by the host.
-  (import "http-handler" "enable_features" (func $enable_features
+  (import "http_handler" "enable_features" (func $enable_features
     (param $enable_features i32)
     (result (; enabled_features ;) i32)))
 
   ;; get_config writes configuration from the host to memory if it exists and
   ;; isn't larger than $buf_limit. The result is its length in bytes.
-  (import "http-handler" "get_config" (func $get_config
+  (import "http_handler" "get_config" (func $get_config
     (param $buf i32) (param $buf_limit i32)
     (result (; len ;) i32)))
 
@@ -19,21 +19,21 @@
   ;;
   ;; The result is `0 or EOF(1) << 32|len`, where `len` is the length in bytes
   ;; read.
-  (import "http-handler" "read_body" (func $read_body
+  (import "http_handler" "read_body" (func $read_body
     (param $kind i32)
     (param $buf i32) (param $buf_len i32)
     (result (; 0 or EOF(1) << 32 | len ;) i64)))
 
   ;; write_body reads $buf_len bytes at memory offset `buf` and writes them to
   ;; the pending $kind body.
-  (import "http-handler" "write_body" (func $write_body
+  (import "http_handler" "write_body" (func $write_body
     (param $kind i32)
     (param $buf i32) (param $buf_len i32)))
 
   ;; next dispatches control to the next handler on the host.
-  (import "http-handler" "next" (func $next))
+  (import "http_handler" "next" (func $next))
 
-  ;; http-wasm guests are required to export "memory", so that imported
+  ;; http_handler guests are required to export "memory", so that imported
   ;; functions like $read_body can read memory.
   (memory (export "memory") 1 1 (; 1 page==64KB ;))
 
