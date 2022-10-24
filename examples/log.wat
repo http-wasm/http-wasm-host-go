@@ -22,12 +22,12 @@
   (func $handle (export "handle")
     ;; We expect debug logging to be disabled. Panic otherwise!
     (if (i32.eq
-          (call $log_enabled (i32.const 0)) ;; log_level_debug
+          (call $log_enabled (i32.const -1)) ;; log_level_debug
           (i32.const 1)) ;; true
         (then unreachable))
 
     (call $log
-      (i32.const 1) ;; log_level_info
+      (i32.const 0) ;; log_level_info
       (global.get $message)
       (global.get $message_len)))
 )

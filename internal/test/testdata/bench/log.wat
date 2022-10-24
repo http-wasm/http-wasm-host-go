@@ -11,7 +11,7 @@
 
   (func $handle (export "handle")
     (call $log
-      (i32.const 1) ;; INFO
+      (i32.const 0) ;; log_level_info
       (global.get $message)
       (global.get $message_len)))
 )
