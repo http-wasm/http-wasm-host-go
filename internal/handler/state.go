@@ -17,7 +17,7 @@ func requestStateFromContext(ctx context.Context) *requestState {
 }
 
 type requestState struct {
-	calledNext         bool
+	beforeNext         bool
 	requestBodyReader  io.ReadCloser
 	requestBodyWriter  io.Writer
 	responseBodyReader io.ReadCloser

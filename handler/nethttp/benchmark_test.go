@@ -165,10 +165,6 @@ var benches = map[string]struct {
 		bin:     test.BinBenchReadBodyStream,
 		request: postLarge,
 	},
-	"next": {
-		bin:     test.BinBenchNext,
-		request: get,
-	},
 	"set_status_code": {
 		bin:     test.BinBenchSetStatusCode,
 		request: get,

@@ -104,7 +104,7 @@ type filterFactory struct {
 }
 
 func (f filterFactory) CreateFilterChain(_ context.Context, callbacks mosnapi.StreamFilterChainFactoryCallbacks) {
-	fr := &filter{m: f.m, ch: make(chan error, 1), features: f.m.Features()}
+	fr := &filter{m: f.m, features: f.m.Features()}
 	callbacks.AddStreamReceiverFilter(fr, mosnapi.BeforeRoute)
 	callbacks.AddStreamSenderFilter(fr, mosnapi.BeforeSend)
 }
@@ -117,12 +117,12 @@ type filter struct {
 	reqHeaders mosnapi.HeaderMap
 	reqBody    mosnapi.IoBuffer
 
+	ctxNext handler.CtxNext
+	reqCtx  context.Context
+
 	respHeaders mosnapi.HeaderMap
 	statusCode  int
 	respBody    []byte
-
-	nextCalled bool
-	ch         chan error
 
 	features handler.Features
 }
@@ -133,21 +133,16 @@ func (f *filter) OnReceive(ctx context.Context, headers mosnapi.HeaderMap, body 
 	f.reqHeaders = headers
 	f.reqBody = body
 
-	go func() {
-		// Handle dispatches to wazero which recovers any panics in host
-		// functions to an error return. Hence, we don't need to recover here.
-		f.ch <- f.m.Handle(ctx)
-	}()
-
-	// Wait for the guest, running in a goroutine, to signal for us to continue. This will either be
-	// within an invocation of next() or when returning from the guest if next() was not called.
-	err := <-f.ch
-
+	// HandleRequest dispatches to wazero which recovers any panics in host
+	// functions to an error return. Hence, we don't need to recover here.
+	outCtx, ctxNext, err := f.m.HandleRequest(ctx)
 	if err != nil {
 		log.Proxy.Errorf(ctx, "wasm error: %v", err)
 	}
 
-	if f.nextCalled {
+	if uint32(ctxNext) == 1 {
+		f.ctxNext = ctxNext
+		f.reqCtx = outCtx
 		return mosnapi.StreamFilterContinue
 	}
 
@@ -175,25 +170,22 @@ func (f *filter) OnDestroy() {
 }
 
 func (f *filter) Append(ctx context.Context, headers mosnapi.HeaderMap, buf mosnapi.IoBuffer, trailers mosnapi.HeaderMap) mosnapi.StreamFilterStatus {
-	if !f.nextCalled {
+	if uint32(f.ctxNext) == 0 {
 		clearAndCopyHeaders(headers, f.respHeaders)
 		return mosnapi.StreamFilterStop
 	}
 
-	ctx = context.WithValue(ctx, filterKey{}, f)
+	ctxNext := f.ctxNext
+	f.ctxNext = 0
+	ctx = f.reqCtx
+	f.reqCtx = nil
 
 	f.respHeaders = copyHeaders(f.respHeaders, headers)
 	if buf != nil {
 		f.respBody = buf.Bytes()
 	}
 
-	// The guest called next, and as we have the upstream response now, we can resume it by
-	// signaling the channel.
-	f.ch <- nil
-
-	// The channel will return when the guest completes.
-	err := <-f.ch
-	if err != nil {
+	if err := f.m.HandleResponse(ctx, uint32(ctxNext>>32), nil); err != nil {
 		log.Proxy.Errorf(ctx, "wasm error: %v", err)
 		return mosnapi.StreamFilterContinue
 	}

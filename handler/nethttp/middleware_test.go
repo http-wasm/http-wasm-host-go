@@ -204,3 +204,22 @@ func TestHeaderNames(t *testing.T) {
 	}
 	defer resp.Body.Close()
 }
+
+// TestHandleResponse uses test.BinE2EHandleResponse which ensures reqCtx
+// propagates from handler.FuncHandleRequest to handler.FuncHandleResponse.
+func TestHandleResponse(t *testing.T) {
+	mw, err := wasm.NewMiddleware(testCtx, test.BinE2EHandleResponse)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mw.Close(testCtx)
+
+	ts := httptest.NewServer(mw.NewHandler(testCtx, noopHandler))
+	defer ts.Close()
+
+	resp, err := ts.Client().Get(ts.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+}

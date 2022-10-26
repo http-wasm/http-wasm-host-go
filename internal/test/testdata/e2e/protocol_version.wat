@@ -10,8 +10,8 @@
 
   (memory (export "memory") 1 1 (; 1 page==64KB ;))
 
-  ;; handle writes the protocol version to the response body.
-  (func (export "handle")
+  ;; handle_request writes the protocol version to the response body.
+  (func (export "handle_request") (result (; ctx_next ;) i64)
     (local $len i32)
 
     ;; read the protocol version into memory at offset zero.
@@ -21,5 +21,11 @@
     ;; write the protocol version to the response body.
     (call $write_body
       (i32.const 1) ;; body_kind_response
-      (i32.const 0) (local.get $len)))
+      (i32.const 0) (local.get $len))
+
+    ;; skip any next handler as we wrote the response body.
+    (return (i64.const 0)))
+
+  ;; handle_response is no-op as this is a request-only handler.
+  (func (export "handle_response") (param $reqCtx i32) (param $is_error i32))
 )

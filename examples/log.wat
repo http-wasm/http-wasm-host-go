@@ -19,7 +19,7 @@
   (data (i32.const 0) "hello world")
   (global $message_len i32 (i32.const 11))
 
-  (func $handle (export "handle")
+  (func (export "handle_request") (result (; ctx_next ;) i64)
     ;; We expect debug logging to be disabled. Panic otherwise!
     (if (i32.eq
           (call $log_enabled (i32.const -1)) ;; log_level_debug
@@ -29,5 +29,11 @@
     (call $log
       (i32.const 0) ;; log_level_info
       (global.get $message)
-      (global.get $message_len)))
+      (global.get $message_len))
+
+    ;; uint32(ctx_next) == 1 means proceed to the next handler on the host.
+    (return (i64.const 1)))
+
+  ;; handle_response is no-op as this is a request-only handler.
+  (func (export "handle_response") (param $reqCtx i32) (param $is_error i32))
 )

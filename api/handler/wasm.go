@@ -1,5 +1,34 @@
 package handler
 
+// CtxNext is the result of FuncHandleRequest. For compatability with
+// WebAssembly Core Specification 1.0, two uint32 values are combined into a
+// single uint64 in the following order:
+//
+//   - ctx: opaque 32-bits the guest defines and the host propagates to
+//     FuncHandleResponse. A typical use is correlation of request state.
+//   - next: one to proceed to the next handler on the host. zero to skip any
+//     next handler. Guests skip when they wrote a response or decided not to.
+//
+// When the guest decides to proceed to the next handler, it can return
+// `ctxNext=1` which is the same as `next=1` without any request context. If it
+// wants the host to propagate request context, it shifts that into the upper
+// 32-bits of ctxNext like so:
+//
+//	ctxNext = uint64(reqCtx) << 32
+//	if next {
+//		ctxNext |= 1
+//	}
+//
+// # Examples
+//
+//   - 0<<32|0  (0): don't proceed to the next handler.
+//   - 0<<32|1  (1): proceed to the next handler without context state.
+//   - 16<<32|1 (68719476737): proceed to the next handler and call
+//     FuncHandleResponse with 16.
+//   - 16<<32|16 (68719476736): the value 16 is ignored because
+//     FuncHandleResponse won't be called.
+type CtxNext uint64
+
 // BufLimit is the possibly zero maximum length of a result value to write in
 // bytes. If the actual value is larger than this, nothing is written to
 // memory.
@@ -60,7 +89,7 @@ const (
 	//
 	// # Notes on FuncWriteBody
 	//
-	// The first call to FuncWriteBody in FuncHandle overwrites any request
+	// The first call to FuncWriteBody in FuncHandleRequest overwrites any request
 	// body.
 	BodyKindRequest BodyKind = 0
 
@@ -74,7 +103,7 @@ const (
 	//
 	// # Notes on FuncWriteBody
 	//
-	// The first call to FuncWriteBody in FuncHandle or after FuncNext
+	// The first call to FuncWriteBody in FuncHandleRequest or after FuncNext
 	// overwrites any response body.
 	BodyKindResponse BodyKind = 1
 )
@@ -116,14 +145,14 @@ const (
 	HostModule = "http_handler"
 
 	// FuncEnableFeatures tries to enable the given features and returns the
-	// Features bitflag supported by the host. This must be called prior to
-	// FuncNext to enable Features needed by the guest.
+	// Features bitflag supported by the host. To have any affect, this must be
+	// called prior to returning from FuncHandleRequest.
 	//
-	// This may be called prior to FuncHandle, for example inside a start
-	// function. Doing so reduces overhead per-call and also allows the guest
-	// to fail early on unsupported.
+	// This may be called prior to FuncHandleRequest, for example inside a
+	// start function. Doing so reduces overhead per-call and also allows the
+	// guest to fail early on unsupported.
 	//
-	// If called during FuncHandle, any new features are only enabled for the
+	// If called during FuncHandleRequest, any new features are enabled for the
 	// scope of the current request. This allows fine-grained access to
 	// expensive features such as FeatureBufferResponse.
 	//
@@ -153,11 +182,34 @@ const (
 	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http_handler/http_handler.wit.md#log
 	FuncLog = "log"
 
-	// FuncHandle is the entrypoint guest export called by the host when
+	// FuncHandleRequest is the entrypoint guest export called by the host when
 	// processing a request.
 	//
-	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http_handler/http_handler.wit.md#handle
-	FuncHandle = "handle"
+	// To proceed to the next handler, the guest returns CtxNext `next=1`. The
+	// simplest result is uint64(1). Guests who need request correlation can
+	// also set the CtxNext "ctx" field. This will be propagated by the host as
+	// the `reqCtx` parameter of FuncHandleResponse.
+	//
+	// To skip any next handler, the guest returns CtxNext `next=0`, or simply
+	// uint64(0). In this case, FuncHandleResponse will not be called.
+	FuncHandleRequest = "handle_request"
+
+	// FuncHandleResponse is called by the host after processing the next
+	// handler when the guest returns CtxNext `next=1` from FuncHandleRequest.
+	//
+	// The `reqCtx` parameter is a possibly zero CtxNext "ctx" field the host
+	// the host propagated from FuncHandleRequest. This allows request
+	// correlation for guests who need it.
+	//
+	// The `isError` parameter is one if there was a host error producing a
+	// response. This allows guests to clean up any resources.
+	//
+	// By default, whether the next handler flushes the response prior to
+	// returning is implementation-specific. If your handler needs to inspect
+	// or manipulate the downstream response, enable FeatureBufferResponse via
+	// FuncEnableFeatures prior to returning from FuncHandleRequest.
+	// TODO: update
+	FuncHandleResponse = "handle_response"
 
 	// FuncGetMethod writes the method to memory if it isn't larger than
 	// BufLimit. The result is its length in bytes. Ex. "GET"
@@ -247,18 +299,6 @@ const (
 	//
 	// TODO: document on http-wasm-abi
 	FuncWriteBody = "write_body"
-
-	// FuncNext calls a downstream handler and blocks until it is finished
-	// processing.
-	//
-	// By default, whether the next handler flushes the response prior to
-	// returning is implementation-specific. If your handler needs to inspect
-	// or manipulate the downstream response, enable FeatureBufferResponse via
-	// FuncEnableFeatures prior to calling this function.
-	//
-	// TODO: update existing document on http-wasm-abi
-	// See https://github.com/http-wasm/http-wasm-abi/blob/main/http_handler/http_handler.wit.md#next
-	FuncNext = "next"
 
 	// FuncGetStatusCode returns the status code produced by FuncNext. This
 	// requires FeatureBufferResponse.

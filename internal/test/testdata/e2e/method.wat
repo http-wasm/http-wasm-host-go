@@ -11,8 +11,6 @@
     (param $kind i32)
     (param $buf i32) (param $buf_len i32)))
 
-  (import "http_handler" "next" (func $next))
-
   (memory (export "memory") 1 1 (; 1 page==64KB ;))
 
   (global $post i32 (i32.const 0))
@@ -21,9 +19,9 @@
 
   (global $buf i32 (i32.const 1024))
 
-  ;; handle changes the method to POST with the original method as the request
-  ;; body. Then, it dispatches to the next handler.
-  (func (export "handle")
+  ;; handle_request changes the method to POST with the original method as the
+  ;; request body. Then, it returns non-zero to proceed to the next handler.
+  (func (export "handle_request") (result (; ctx_next ;) i64)
     (local $len i32)
 
     ;; read the method into memory at offset zero.
@@ -38,6 +36,9 @@
       (i32.const 0) ;; body_kind_request
       (global.get $buf) (local.get $len))
 
-    ;; call the next handler which verifies state
-    (call $next))
+    ;; skip any next handler as we wrote the response body.
+    (return (i64.const 0)))
+
+  ;; handle_response is no-op as this is a request-only handler.
+  (func (export "handle_response") (param $reqCtx i32) (param $is_error i32))
 )

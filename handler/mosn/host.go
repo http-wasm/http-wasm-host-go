@@ -170,20 +170,6 @@ func (host) SetURI(ctx context.Context, uri string) {
 	}
 }
 
-func (host) Next(ctx context.Context) {
-	f := filterFromContext(ctx)
-	f.nextCalled = true
-
-	// The handling of a request is split into two functions, OnReceive and Append in mosn.
-	// Invoking the next handler means we need to finish OnReceive and come back in Append.
-
-	// Resume execution of OnReceive which is currently waiting on this channel.
-	f.ch <- nil
-
-	// Wait for Append to resume execution of Next when it signals this channel.
-	<-f.ch
-}
-
 func (host) GetStatusCode(ctx context.Context) uint32 {
 	f := filterFromContext(ctx)
 	if resp, ok := f.respHeaders.(http.ResponseHeader); ok {

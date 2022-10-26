@@ -23,7 +23,7 @@ type Middleware[H any] interface {
 }
 
 // Host supports the host side of the WebAssembly module named HostModule.
-// These callbacks are used by the guest function export FuncHandle.
+// These callbacks are used by the guest function export FuncHandleRequest.
 type Host interface {
 	// EnableFeatures supports the WebAssembly function export EnableFeatures.
 	EnableFeatures(ctx context.Context, features Features) Features
@@ -98,10 +98,6 @@ type Host interface {
 	// FuncRemoveHeader with HeaderKindRequestTrailers. This panics if
 	// FeatureTrailers is not supported.
 	RemoveRequestTrailer(ctx context.Context, name string)
-
-	// Next supports the WebAssembly function export FuncNext, which invokes
-	// the next handler.
-	Next(ctx context.Context)
 
 	// GetStatusCode supports the WebAssembly function export
 	// FuncGetStatusCode.

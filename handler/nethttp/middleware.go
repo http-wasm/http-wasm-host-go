@@ -2,6 +2,7 @@ package wasm
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 
@@ -56,7 +57,17 @@ func (s *requestState) enableFeatures(features handler.Features) {
 	}
 }
 
-func (s *requestState) handleNext() {
+func (s *requestState) handleNext() (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			if e, ok := recovered.(error); ok {
+				err = e
+			} else {
+				err = fmt.Errorf("%v", recovered)
+			}
+		}
+	}()
+
 	// If we set the intercepted the request body for any reason, reset it
 	// before calling downstream.
 	if br, ok := s.r.Body.(*bufferingRequestBody); ok {
@@ -68,6 +79,7 @@ func (s *requestState) handleNext() {
 		}
 	}
 	s.next.ServeHTTP(s.w, s.r)
+	return
 }
 
 func requestStateFromContext(ctx context.Context) *requestState {
@@ -76,7 +88,12 @@ func requestStateFromContext(ctx context.Context) *requestState {
 
 // NewHandler implements the same method as documented on handler.Middleware.
 func (w *middleware) NewHandler(_ context.Context, next http.Handler) http.Handler {
-	return &guest{handle: w.m.Handle, next: next, features: w.m.Features()}
+	return &guest{
+		handleRequest:  w.m.HandleRequest,
+		handleResponse: w.m.HandleResponse,
+		next:           next,
+		features:       w.m.Features(),
+	}
 }
 
 // Close implements the same method as documented on handler.Middleware.
@@ -85,9 +102,10 @@ func (w *middleware) Close(ctx context.Context) error {
 }
 
 type guest struct {
-	handle   func(ctx context.Context) (err error)
-	next     http.Handler
-	features handler.Features
+	handleRequest  func(ctx context.Context) (outCtx context.Context, ctxNext handler.CtxNext, err error)
+	handleResponse func(ctx context.Context, reqCtx uint32, err error) error
+	next           http.Handler
+	features       handler.Features
 }
 
 // ServeHTTP implements http.Handler
@@ -96,11 +114,33 @@ func (g *guest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// functions, we add context parameters of the current request.
 	s := newRequestState(w, r, g)
 	ctx := context.WithValue(r.Context(), requestStateKey{}, s)
-	if err := g.handle(ctx); err != nil {
-		// TODO: after testing, shouldn't send errors into the HTTP response.
-		w.WriteHeader(500)
-		w.Write([]byte(err.Error())) // nolint
-	} else if bw, ok := s.w.(*bufferingResponseWriter); ok {
-		bw.release()
+	outCtx, ctxNext, requestErr := g.handleRequest(ctx)
+	if requestErr != nil {
+		handleErr(w, requestErr)
 	}
+
+	// If buffering was enabled, ensure it flushes.
+	if bw, ok := s.w.(*bufferingResponseWriter); ok {
+		defer bw.release()
+	}
+
+	// Returning zero means the guest wants to break the handler chain, and
+	// handle the response directly.
+	if uint32(ctxNext) == 0 {
+		return
+	}
+
+	// Otherwise, the host calls the next handler.
+	err := s.handleNext()
+
+	// Finally, call the guest with the response or error
+	if err = g.handleResponse(outCtx, uint32(ctxNext>>32), err); err != nil {
+		panic(err)
+	}
+}
+
+func handleErr(w http.ResponseWriter, requestErr error) {
+	// TODO: after testing, shouldn't send errors into the HTTP response.
+	w.WriteHeader(500)
+	w.Write([]byte(requestErr.Error())) // nolint
 }

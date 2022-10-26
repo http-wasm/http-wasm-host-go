@@ -30,9 +30,6 @@
     (param $kind i32)
     (param $buf i32) (param $buf_len i32)))
 
-  ;; next dispatches control to the next handler on the host.
-  (import "http_handler" "next" (func $next))
-
   ;; http_handler guests are required to export "memory", so that imported
   ;; functions like $read_body can read memory.
   (memory (export "memory") 1 1 (; 1 page==64KB ;))
@@ -117,8 +114,8 @@
 
     (local.get $len))
 
-  ;; handle implements a simple HTTP router.
-  (func $handle (export "handle")
+  ;; handle_request redacts any request body.
+  (func (export "handle_request") (result (; ctx_next ;) i64)
     (local $len i32)
 
     ;; load the request body from the upstream handler into memory.
@@ -131,7 +128,15 @@
           (i32.const 0) ;; body_kind_request
           (global.get $body) (local.get $len))))
 
-    (call $next) ;; dispatch with $feature_buffer_response enabled.
+    ;; uint32(ctx_next) == 1 means proceed to the next handler on the host.
+    (return (i64.const 1)))
+
+  ;; handle_response redacts any request body.
+  (func (export "handle_response") (param $reqCtx i32) (param $is_error i32)
+    (local $len i32)
+
+    (if (i32.eq (local.get $is_error) (i32.const 1))
+      (then (return))) ;; nothing to redact on error
 
     ;; load the response body from the downstream handler into memory.
     (local.set $len (call $must_read_body (i32.const 1)))

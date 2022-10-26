@@ -12,9 +12,6 @@
   (import "http_handler" "set_uri" (func $set_uri
     (param $uri i32) (param $uri_len i32)))
 
-  ;; next dispatches control to the next handler on the host.
-  (import "http_handler" "next" (func $next))
-
   ;; set_header_value overwrites a header of the given $kind and $name with a
   ;; single value.
   (import "http_handler" "set_header_value" (func $set_header_value
@@ -52,8 +49,8 @@
   (data (i32.const 96) "hello world")
   (global $body_len i32 (i32.const 11))
 
-  ;; handle implements a simple HTTP router.
-  (func $handle (export "handle")
+  ;; handle_request implements a simple HTTP router.
+  (func (export "handle_request") (result (; ctx_next ;) i64)
 
     (local $uri_len i32)
 
@@ -66,8 +63,7 @@
     ;; if uri_len > uri_limit { next() }
     (if (i32.gt_u (local.get $uri_len) (global.get $uri_limit))
       (then
-        (call $next)
-        (return))) ;; dispatch if the uri is too long.
+        (return (i64.const 1)))) ;; dispatch if the uri is too long.
 
     ;; Next, strip any paths starting with '/host' and dispatch.
 
@@ -83,8 +79,7 @@
             (call $set_uri ;; uri = uri[path_prefix_len:]
               (i32.add (global.get $uri)     (global.get $path_prefix_len))
               (i32.sub (local.get  $uri_len) (global.get $path_prefix_len)))
-            (call $next)
-            (return))))) ;; dispatch with the stripped path.
+            (return (i64.const 1)))))) ;; dispatch with the stripped path.
 
     ;; Otherwise, serve a static response.
     (call $set_header_value
@@ -96,7 +91,11 @@
     (call $write_body
       (i32.const 1) ;; body_kind_response
       (global.get $body)
-      (global.get $body_len)))
+      (global.get $body_len))
+    (return (i64.const 0))) ;; don't call the next handler
+
+  ;; handle_response is no-op as this is a request-only handler.
+  (func (export "handle_response") (param $reqCtx i32) (param $is_error i32))
 
   ;; memeq is like memcmp except it returns 0 (ne) or 1 (eq)
   (func $memeq (param $ptr1 i32) (param $ptr2 i32) (param $len i32) (result i32)
