@@ -8,8 +8,15 @@
   (data (i32.const 0) "Set-Cookie")
   (global $name_len i32 (i32.const 10))
 
-  (func $handle (export "handle")
+  (func (export "handle_request") (result (; ctx_next ;) i64)
     (call $remove_header
       (i32.const 1) ;; header_kind_response
-      (global.get $name) (global.get $name_len)))
+      (global.get $name) (global.get $name_len))
+
+    ;; skip any next handler as the benchmark is about remove_header.
+    (return (i64.const 0)))
+
+  ;; handle_response should not be called as handle_request returns zero.
+  (func (export "handle_response") (param $reqCtx i32) (param $is_error i32)
+    (unreachable))
 )

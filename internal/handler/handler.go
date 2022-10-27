@@ -3,6 +3,7 @@
 package internalhandler
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -21,8 +22,19 @@ import (
 // Middleware implements the http-wasm handler ABI.
 // It is scoped to a single guest binary.
 type Middleware interface {
-	// Handle handles a request by calling handler.FuncHandle on the guest.
-	Handle(ctx context.Context) error
+	// HandleRequest handles a request by calling handler.FuncHandleRequest on
+	// the guest.
+	HandleRequest(ctx context.Context) (outCtx context.Context, ctxNext handler.CtxNext, err error)
+
+	// HandleResponse handles a response by calling handler.FuncHandleResponse
+	// on the guest. This is only called when HandleRequest returns
+	// handler.CtxNext with `next=1`.
+	//
+	// The ctx and ctxNext parameters are those returned from HandleRequest.
+	// Specifically, the handler.CtxNext "ctx" field is passed as `reqCtx`.
+	// The err parameter is nil unless the host erred processing the next
+	// handler.
+	HandleResponse(ctx context.Context, reqCtx uint32, err error) error
 
 	// Features are the features enabled while initializing the guest. This
 	// value won't change per-request.
@@ -97,10 +109,14 @@ func NewMiddleware(ctx context.Context, guest []byte, host handler.Host, options
 func (m *middleware) compileGuest(ctx context.Context, wasm []byte) (wazero.CompiledModule, error) {
 	if guest, err := m.runtime.CompileModule(ctx, wasm); err != nil {
 		return nil, fmt.Errorf("wasm: error compiling guest: %w", err)
-	} else if handle, ok := guest.ExportedFunctions()[handler.FuncHandle]; !ok {
-		return nil, fmt.Errorf("wasm: guest doesn't export func[%s]", handler.FuncHandle)
-	} else if len(handle.ParamTypes()) != 0 || len(handle.ResultTypes()) != 0 {
-		return nil, fmt.Errorf("wasm: guest exports the wrong signature for func[%s]. should be nullary", handler.FuncHandle)
+	} else if handleRequest, ok := guest.ExportedFunctions()[handler.FuncHandleRequest]; !ok {
+		return nil, fmt.Errorf("wasm: guest doesn't export func[%s]", handler.FuncHandleRequest)
+	} else if len(handleRequest.ParamTypes()) != 0 || !bytes.Equal(handleRequest.ResultTypes(), []wazeroapi.ValueType{wazeroapi.ValueTypeI64}) {
+		return nil, fmt.Errorf("wasm: guest exports the wrong signature for func[%s]. should be () -> (i64)", handler.FuncHandleRequest)
+	} else if handleResponse, ok := guest.ExportedFunctions()[handler.FuncHandleResponse]; !ok {
+		return nil, fmt.Errorf("wasm: guest doesn't export func[%s]", handler.FuncHandleResponse)
+	} else if !bytes.Equal(handleResponse.ParamTypes(), []wazeroapi.ValueType{wazeroapi.ValueTypeI32, wazeroapi.ValueTypeI32}) || len(handleResponse.ResultTypes()) != 0 {
+		return nil, fmt.Errorf("wasm: guest exports the wrong signature for func[%s]. should be (i32, 32) -> ()", handler.FuncHandleResponse)
 	} else if _, ok = guest.ExportedMemories()[api.Memory]; !ok {
 		return nil, fmt.Errorf("wasm: guest doesn't export memory[%s]", api.Memory)
 	} else {
@@ -108,33 +124,57 @@ func (m *middleware) compileGuest(ctx context.Context, wasm []byte) (wazero.Comp
 	}
 }
 
-// Handle implements Middleware.Handle
-func (m *middleware) Handle(ctx context.Context) error {
-	poolG := m.pool.Get()
-	if poolG == nil {
-		g, err := m.newGuest(ctx)
-		if err != nil {
-			return err
-		}
-		poolG = g
+// HandleRequest implements Middleware.HandleRequest
+func (m *middleware) HandleRequest(ctx context.Context) (outCtx context.Context, ctxNext handler.CtxNext, err error) {
+	g, guestErr := m.getOrCreateGuest(ctx)
+	if guestErr != nil {
+		err = guestErr
+		return
 	}
-	g := poolG.(*guest)
 	defer m.pool.Put(g)
+
 	s := &requestState{features: m.features}
-	defer s.Close()
-	ctx = context.WithValue(ctx, requestStateKey{}, s)
-	return g.handle(ctx)
+	defer func() {
+		if ctxNext != 0 { // will call the next handler
+			if closeErr := s.closeRequest(); err == nil {
+				err = closeErr
+			}
+		} else { // will return the response
+			if closeErr := s.Close(); err == nil {
+				err = closeErr
+			}
+		}
+	}()
+
+	outCtx = context.WithValue(ctx, requestStateKey{}, s)
+	ctxNext, err = g.handleRequest(outCtx)
+	return
 }
 
-// next calls the same function as documented on handler.Host.
-func (m *middleware) next(ctx context.Context) {
-	s := requestStateFromContext(ctx)
-	if s.calledNext {
-		panic("already called next")
+func (m *middleware) getOrCreateGuest(ctx context.Context) (*guest, error) {
+	poolG := m.pool.Get()
+	if poolG == nil {
+		if g, createErr := m.newGuest(ctx); createErr != nil {
+			return nil, createErr
+		} else {
+			poolG = g
+		}
 	}
-	s.calledNext = true
-	_ = s.closeRequest()
-	m.host.Next(ctx)
+	return poolG.(*guest), nil
+}
+
+// HandleResponse implements Middleware.HandleResponse
+func (m *middleware) HandleResponse(ctx context.Context, reqCtx uint32, hostErr error) error {
+	g, err := m.getOrCreateGuest(ctx)
+	if err != nil {
+		return err
+	}
+	defer m.pool.Put(g)
+
+	s := requestStateFromContext(ctx)
+	defer s.Close()
+
+	return g.handleResponse(ctx, reqCtx, hostErr)
 }
 
 // Close implements api.Closer
@@ -144,9 +184,10 @@ func (m *middleware) Close(ctx context.Context) error {
 }
 
 type guest struct {
-	ns         wazero.Namespace
-	guest      wazeroapi.Module
-	handleFunc wazeroapi.Function
+	ns               wazero.Namespace
+	guest            wazeroapi.Module
+	handleRequestFn  wazeroapi.Function
+	handleResponseFn wazeroapi.Function
 }
 
 func (m *middleware) newGuest(ctx context.Context) (*guest, error) {
@@ -168,13 +209,32 @@ func (m *middleware) newGuest(ctx context.Context) (*guest, error) {
 		return nil, fmt.Errorf("wasm: error instantiating guest: %w", err)
 	}
 
-	return &guest{ns: ns, guest: g, handleFunc: g.ExportedFunction(handler.FuncHandle)}, nil
+	return &guest{
+		ns:               ns,
+		guest:            g,
+		handleRequestFn:  g.ExportedFunction(handler.FuncHandleRequest),
+		handleResponseFn: g.ExportedFunction(handler.FuncHandleResponse),
+	}, nil
 }
 
-// handle calls the WebAssembly guest function handler.FuncHandle.
-func (g *guest) handle(ctx context.Context) (err error) {
-	_, err = g.handleFunc.Call(ctx)
+// handleRequest calls the WebAssembly guest function handler.FuncHandleRequest.
+func (g *guest) handleRequest(ctx context.Context) (ctxNext handler.CtxNext, err error) {
+	if results, guestErr := g.handleRequestFn.Call(ctx); guestErr != nil {
+		err = guestErr
+	} else {
+		ctxNext = handler.CtxNext(results[0])
+	}
 	return
+}
+
+// handleResponse calls the WebAssembly guest function handler.FuncHandleResponse.
+func (g *guest) handleResponse(ctx context.Context, reqCtx uint32, err error) error {
+	wasError := uint64(0)
+	if err != nil {
+		wasError = 1
+	}
+	_, err = g.handleResponseFn.Call(ctx, uint64(reqCtx), wasError)
+	return err
 }
 
 // enableFeatures implements the WebAssembly host function handler.FuncEnableFeatures.
@@ -499,14 +559,14 @@ func readBody(ctx context.Context, mod wazeroapi.Module, buf uint32, bufLimit ha
 }
 
 func mustBeforeNext(ctx context.Context, op, kind string) (s *requestState) {
-	if s = requestStateFromContext(ctx); s.calledNext {
+	if s = requestStateFromContext(ctx); s.beforeNext {
 		panic(fmt.Errorf("can't %s %s after next handler", op, kind))
 	}
 	return
 }
 
 func mustBeforeNextOrFeature(ctx context.Context, feature handler.Features, op, kind string) (s *requestState) {
-	if s = requestStateFromContext(ctx); !s.calledNext {
+	if s = requestStateFromContext(ctx); !s.beforeNext {
 		// Assume this is serving a response from the guest.
 	} else if s.features.IsEnabled(feature) {
 		// Assume the guest is overwriting the response from next.
@@ -551,8 +611,6 @@ func (m *middleware) compileHost(ctx context.Context) (wazero.CompiledModule, er
 			handler.FuncReadBody, "kind", "buf", "buf_limit").
 		ExportFunction(handler.FuncWriteBody, m.writeBody,
 			handler.FuncWriteBody, "kind", "body", "body_len").
-		ExportFunction(handler.FuncNext, m.next,
-			handler.FuncNext).
 		ExportFunction(handler.FuncGetStatusCode, m.getStatusCode,
 			handler.FuncGetStatusCode).
 		ExportFunction(handler.FuncSetStatusCode, m.setStatusCode,

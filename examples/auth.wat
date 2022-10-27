@@ -12,9 +12,6 @@
     (param $buf i32) (param $buf_limit i32)
     (result (; count << 32| len ;) i64)))
 
-  ;; next dispatches control to the next handler on the host.
-  (import "http_handler" "next" (func $next))
-
   ;; set_header_value overwrites a header of the given $kind and $name with a
   ;; single value.
   (import "http_handler" "set_header_value" (func $set_header_value
@@ -68,13 +65,15 @@
       (global.get $authenticate_value)
       (global.get $authenticate_value_len)))
 
-  ;; handle tries BASIC authentication and dispatches to "next" or returns 401.
-  (func $handle (export "handle")
+  ;; handle_request tries BASIC authentication and dispatches to the next
+  ;; handler or returns 401.
+  (func (export "handle_request") (result (; ctx_next ;) i64)
 
     (local $result i64)
     (local $count i32)
     (local $len i32)
     (local $authorization_eq i32)
+    (local $ctx_next i64)
 
     (local.set $result (call $get_authorization))
 
@@ -86,7 +85,7 @@
       (then ;; multiple headers, invalid
         (call $set_authenticate)
         (call $set_status_code (i32.const 401))
-        (return)))
+        (return (i64.const 0)))) ;; don't call the next handler
 
     ;; len = uint32(result)
     (local.set $len (i32.wrap_i64 (local.get $result)))
@@ -94,7 +93,7 @@
     (if (i32.ne (global.get $authorization_values_len) (local.get $len))
       (then ;; authorization_values_length != i32($header_value)
         (call $set_status_code (i32.const 401))
-        (return)))
+        (return (i64.const 0)))) ;; don't call the next handler
 
     (local.set $authorization_eq (call $memeq
       (global.get $buf)
@@ -104,8 +103,15 @@
     (if (i32.eqz (local.get $authorization_eq))
       (then ;; authenticate_value != authorization_values
         (call $set_status_code (i32.const 401)))
-      (else ;; authorization passed! call the next handler
-        (call $next))))
+      (else ;; authorization passed!
+        (local.set $ctx_next (i64.const 1)))) ;; call the next handler
+    (return (local.get $ctx_next))
+
+    ;; uint32(ctx_next) == 1 means proceed to the next handler on the host.
+    (return (i64.const 1)))
+
+  ;; handle_response is no-op as this is a request-only handler.
+  (func (export "handle_response") (param $reqCtx i32) (param $is_error i32))
 
   ;; memeq is like memcmp except it returns 0 (ne) or 1 (eq)
   (func $memeq (param $ptr1 i32) (param $ptr2 i32) (param $len i32) (result i32)

@@ -7,7 +7,7 @@
 
   (memory (export "memory") 1 1 (; 1 page==64KB ;))
 
-  (func $handle (export "handle")
+  (func (export "handle_request") (result (; ctx_next ;) i64)
     (local $buf i32)
     (local $result i64)
     (local $len i32)
@@ -22,7 +22,7 @@
 
     ;; if result == 0 { return }
     (if (i64.eqz (local.get $result))
-      (then (return))) ;; no headers
+      (then (return (i64.const 0)))) ;; no headers
 
     ;; expected_count = uint32(result >> 32)
     (local.set $expected_count
@@ -54,5 +54,11 @@
 
     ;; if count != expected_count { panic }
     (if (i32.eq (local.get $count) (local.get $expected_count))
-      (then (unreachable)))) ;; the result wasn't NUL-terminated
+      (then (unreachable))) ;; the result wasn't NUL-terminated
+
+    ;; uint32(ctx_next) == 1 means proceed to the next handler on the host.
+    (return (i64.const 1)))
+
+  ;; handle_response is no-op as this is a request-only handler.
+  (func (export "handle_response") (param $reqCtx i32) (param $is_error i32))
 )

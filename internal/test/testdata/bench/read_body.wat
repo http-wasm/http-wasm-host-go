@@ -10,7 +10,7 @@
   ;; eof is the upper 32-bits of the $read_body result on EOF.
   (global $eof i64 (i64.const 4294967296)) ;; `1<<32|0`
 
-  (func $handle (export "handle")
+  (func (export "handle_request") (result (; ctx_next ;) i64)
     (local $result i64)
 
     ;; read up to 2KB into memory
@@ -27,5 +27,12 @@
 
     ;; if len == 0 { panic }
     (if (i32.eqz (i32.wrap_i64 (local.get $result)))
-       (then (unreachable)))) ;; didn't read the body
+       (then (unreachable))) ;; didn't read the body
+
+    ;; skip any next handler as the benchmark is about read_body.
+    (return (i64.const 0)))
+
+  ;; handle_response should not be called as handle_request returns zero.
+  (func (export "handle_response") (param $reqCtx i32) (param $is_error i32)
+    (unreachable))
 )

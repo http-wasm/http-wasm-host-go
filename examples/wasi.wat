@@ -32,7 +32,6 @@
     (param $buf i32) (param $buf_limit i32)
     (result (; len ;) i32)))
 
-
   ;; get_header_names writes all header names for the given $kind,
   ;; NUL-terminated, to memory if the encoded length isn't larger than
   ;; $buf_limit. The result is regardless of whether memory was written.
@@ -66,9 +65,6 @@
     (param $kind i32)
     (param $buf i32) (param $buf_len i32)))
 
-  ;; next dispatches control to the next handler on the host.
-  (import "http_handler" "next" (func $next))
-
   ;; get_status_code returnts the status code produced by $next.
   (import "http_handler" "get_status_code" (func $get_status_code
     (result (; status_code ;) i32)))
@@ -77,8 +73,13 @@
   ;; functions like "fd_write" can read memory.
   (memory (export "memory") 1 1 (; 1 page==64KB ;))
 
-  ;; heap_start allows scratch space for WASI.
-  (global $heap_start i32 (i32.const 32))
+  ;; error starts at 32 to allow scratch space for WASI.
+  (global $error i32 (i32.const 32))
+  (data (i32.const 32) "host error")
+  (global $error_len i32 (i32.const 10))
+
+  ;; heap_start starts after $error
+  (global $heap_start i32 (i32.const 64))
 
   (global $buf_limit i32 (i32.const 2048))
   (func $buf_remaining (param $buf i32) (result i32)
@@ -146,19 +147,29 @@
 
   (start $main)
 
-  ;; handle prints the request and response messages around the "next" handler.
-  (func $handle (export "handle")
+  ;; handle_request prints the request message to the consolt and returns
+  ;; non-zero to call the next handler.
+  (func (export "handle_request") (result (; ctx_next ;) i64)
     ;; Print the incoming request to the console.
     (call $print_request_line)
     (call $print_request_headers)
     (call $print_request_body)
     (call $print_request_trailers)
 
-	;; Handle the request, in whichever way defined by the host.
-    (call $next)
+    ;; uint32(ctx_next) == 1 means proceed to the next handler on the host.
+    (return (i64.const 1)))
+
+  ;; handle_response prints the response message or the word "error" to the
+  ;; console.
+  (func (export "handle_response") (param $reqCtx i32) (param $is_error i32)
 
     ;; println("")
     (call $println (global.get $heap_start) (i32.const 0))
+
+    ;; if is_error == 1 { println("host error"); return }
+    (if (i32.eq (local.get $is_error) (i32.const 1))
+      (then (call $println (global.get $error) (global.get $error_len))
+            (return)))
 
     ;; Because we enabled buffering, we can read the response.
     ;; Print it to the console.

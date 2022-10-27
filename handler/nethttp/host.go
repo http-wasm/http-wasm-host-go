@@ -181,11 +181,6 @@ func (host) RemoveRequestTrailer(ctx context.Context, name string) {
 	removeTrailer(header, name)
 }
 
-// Next implements the same method as documented on handler.Host.
-func (host) Next(ctx context.Context) {
-	requestStateFromContext(ctx).handleNext()
-}
-
 // GetStatusCode implements the same method as documented on handler.Host.
 func (host) GetStatusCode(ctx context.Context) uint32 {
 	s := requestStateFromContext(ctx)

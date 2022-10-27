@@ -14,11 +14,13 @@
     (param $buf i32) (param $buf_limit i32)
     (result (; len ;) i32)))
 
-  ;; next dispatches control to the next handler on the host.
-  (import "http_handler" "next" (func $next))
+  ;; handle_request just calls next by returning non-zero.
+  (func (export "handle_request") (result (; ctx_next ;) i64)
+    ;; uint32(ctx_next) == 1 means proceed to the next handler on the host.
+    (return (i64.const 1)))
 
-  ;; handle just calls next.
-  (func (export "handle") (call $next))
+  ;; handle_response is no-op as this is a request-only handler.
+  (func (export "handle_response") (param $reqCtx i32) (param $is_error i32))
 
   ;; http_handler guests are required to export "memory", so that imported
   ;; functions like "get_header" can read memory.

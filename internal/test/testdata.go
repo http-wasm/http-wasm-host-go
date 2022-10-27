@@ -40,9 +40,6 @@ var BinBenchReadBodyStream []byte
 //go:embed testdata/bench/write_body.wasm
 var BinBenchWriteBody []byte
 
-//go:embed testdata/bench/next.wasm
-var BinBenchNext []byte
-
 //go:embed testdata/bench/set_status_code.wasm
 var BinBenchSetStatusCode []byte
 
@@ -78,6 +75,9 @@ var BinE2EURI []byte
 
 //go:embed testdata/e2e/protocol_version.wasm
 var BinE2EProtocolVersion []byte
+
+//go:embed testdata/e2e/handle_response.wasm
+var BinE2EHandleResponse []byte
 
 //go:embed testdata/e2e/header_names.wasm
 var BinE2EHeaderNames []byte

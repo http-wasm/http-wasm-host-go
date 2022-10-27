@@ -7,8 +7,15 @@
   (data (i32.const 0) "/v1.0/hello?name=teddy")
   (global $uri_len i32 (i32.const 22))
 
-  (func $handle (export "handle")
+  (func (export "handle_request") (result (; ctx_next ;) i64)
     (call $set_uri
       (global.get $uri)
-      (global.get $uri_len)))
+      (global.get $uri_len))
+
+    ;; skip any next handler as the benchmark is about set_uri.
+    (return (i64.const 0)))
+
+  ;; handle_response should not be called as handle_request returns zero.
+  (func (export "handle_response") (param $reqCtx i32) (param $is_error i32)
+    (unreachable))
 )
