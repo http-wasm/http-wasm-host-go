@@ -203,6 +203,9 @@ func TestHeaderNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("invalid status code: %d, status message: %s", resp.StatusCode, resp.Status)
+	}
 }
 
 // TestHandleResponse uses test.BinE2EHandleResponse which ensures reqCtx
