@@ -238,7 +238,10 @@ func (g *guest) handleResponse(ctx context.Context, reqCtx uint32, err error) er
 }
 
 // enableFeatures implements the WebAssembly host function handler.FuncEnableFeatures.
-func (m *middleware) enableFeatures(ctx context.Context, features handler.Features) (enabled handler.Features) {
+func (m *middleware) enableFeatures(ctx context.Context, params []uint64) []uint64 {
+	features := handler.Features(params[0])
+
+	var enabled handler.Features
 	if s, ok := ctx.Value(requestStateKey{}).(*requestState); ok {
 		s.features = m.host.EnableFeatures(ctx, s.features.WithEnabled(features))
 		enabled = s.features
@@ -246,26 +249,40 @@ func (m *middleware) enableFeatures(ctx context.Context, features handler.Featur
 		m.features = m.host.EnableFeatures(ctx, m.features.WithEnabled(features))
 		enabled = m.features
 	}
-	return enabled
+
+	return []uint64{uint64(enabled)}
 }
 
 // getConfig implements the WebAssembly host function handler.FuncGetConfig.
-func (m *middleware) getConfig(ctx context.Context, mod wazeroapi.Module,
-	buf uint32, bufLimit handler.BufLimit) (len uint32) {
-	return writeIfUnderLimit(ctx, mod, buf, bufLimit, m.guestConfig)
+func (m *middleware) getConfig(ctx context.Context, mod wazeroapi.Module, params []uint64) []uint64 {
+	buf := uint32(params[0])
+	bufLimit := handler.BufLimit(params[1])
+
+	configLen := writeIfUnderLimit(ctx, mod, buf, bufLimit, m.guestConfig)
+
+	return []uint64{uint64(configLen)}
 }
 
+var (
+	resultTrue  = []uint64{1}
+	resultFalse = []uint64{0}
+)
+
 // log implements the WebAssembly host function handler.FuncLogEnabled.
-func (m *middleware) logEnabled(level api.LogLevel) uint32 {
+func (m *middleware) logEnabled(_ context.Context, params []uint64) []uint64 {
+	level := api.LogLevel(params[0])
 	if m.logger.IsEnabled(level) {
-		return 1
+		return resultTrue
 	}
-	return 0
+	return resultFalse
 }
 
 // log implements the WebAssembly host function handler.FuncLog.
-func (m *middleware) log(ctx context.Context, mod wazeroapi.Module,
-	level api.LogLevel, message, messageLen uint32) {
+func (m *middleware) log(ctx context.Context, mod wazeroapi.Module, params []uint64) (_ []uint64) {
+	level := api.LogLevel(params[0])
+	message := uint32(params[1])
+	messageLen := uint32(params[2])
+
 	if !m.logger.IsEnabled(level) {
 		return
 	}
@@ -274,19 +291,25 @@ func (m *middleware) log(ctx context.Context, mod wazeroapi.Module,
 		msg = mustReadString(ctx, mod.Memory(), "message", message, messageLen)
 	}
 	m.logger.Log(ctx, level, msg)
+	return
 }
 
 // getMethod implements the WebAssembly host function handler.FuncGetMethod.
-func (m *middleware) getMethod(ctx context.Context, mod wazeroapi.Module,
-	buf uint32, bufLimit handler.BufLimit) (len uint32) {
+func (m *middleware) getMethod(ctx context.Context, mod wazeroapi.Module, params []uint64) []uint64 {
+	buf := uint32(params[0])
+	bufLimit := handler.BufLimit(params[1])
+
 	method := m.host.GetMethod(ctx)
-	return writeStringIfUnderLimit(ctx, mod, buf, bufLimit, method)
+	methodLen := writeStringIfUnderLimit(ctx, mod, buf, bufLimit, method)
+
+	return []uint64{uint64(methodLen)}
 }
 
-// getHeader implements the WebAssembly host function
-// handler.FuncSetMethod.
-func (m *middleware) setMethod(ctx context.Context, mod wazeroapi.Module,
-	method, methodLen uint32) {
+// getHeader implements the WebAssembly host function handler.FuncSetMethod.
+func (m *middleware) setMethod(ctx context.Context, mod wazeroapi.Module, params []uint64) (_ []uint64) {
+	method := uint32(params[0])
+	methodLen := uint32(params[1])
+
 	_ = mustBeforeNext(ctx, "set", "method")
 
 	var p string
@@ -295,41 +318,57 @@ func (m *middleware) setMethod(ctx context.Context, mod wazeroapi.Module,
 	}
 	p = mustReadString(ctx, mod.Memory(), "method", method, methodLen)
 	m.host.SetMethod(ctx, p)
+
+	return
 }
 
 // getURI implements the WebAssembly host function handler.FuncGetURI.
-func (m *middleware) getURI(ctx context.Context, mod wazeroapi.Module,
-	buf uint32, bufLimit handler.BufLimit) (len uint32) {
+func (m *middleware) getURI(ctx context.Context, mod wazeroapi.Module, params []uint64) []uint64 {
+	buf := uint32(params[0])
+	bufLimit := handler.BufLimit(params[1])
+
 	uri := m.host.GetURI(ctx)
-	return writeStringIfUnderLimit(ctx, mod, buf, bufLimit, uri)
+	uriLen := writeStringIfUnderLimit(ctx, mod, buf, bufLimit, uri)
+
+	return []uint64{uint64(uriLen)}
 }
 
-// getHeader implements the WebAssembly host function
-// handler.FuncSetURI.
-func (m *middleware) setURI(ctx context.Context, mod wazeroapi.Module,
-	uri, uriLen uint32) {
+// setURI implements the WebAssembly host function handler.FuncSetURI.
+func (m *middleware) setURI(ctx context.Context, mod wazeroapi.Module, params []uint64) (_ []uint64) {
+	uri := uint32(params[0])
+	uriLen := uint32(params[1])
+
 	var p string
 	if uriLen > 0 { // overwrite with empty is supported
 		p = mustReadString(ctx, mod.Memory(), "uri", uri, uriLen)
 	}
 	m.host.SetURI(ctx, p)
+
+	return
 }
 
 // getProtocolVersion implements the WebAssembly host function
 // handler.FuncGetProtocolVersion.
-func (m *middleware) getProtocolVersion(ctx context.Context, mod wazeroapi.Module,
-	buf uint32, bufLimit handler.BufLimit) uint32 {
+func (m *middleware) getProtocolVersion(ctx context.Context, mod wazeroapi.Module, params []uint64) []uint64 {
+	buf := uint32(params[0])
+	bufLimit := handler.BufLimit(params[1])
+
 	protocolVersion := m.host.GetProtocolVersion(ctx)
 	if len(protocolVersion) == 0 {
 		panic("HTTP protocol version cannot be empty")
 	}
-	return writeStringIfUnderLimit(ctx, mod, buf, bufLimit, protocolVersion)
+	protocolVersionLen := writeStringIfUnderLimit(ctx, mod, buf, bufLimit, protocolVersion)
+
+	return []uint64{uint64(protocolVersionLen)}
 }
 
 // getHeaderNames implements the WebAssembly host function
 // handler.FuncGetHeaderNames.
-func (m *middleware) getHeaderNames(ctx context.Context, mod wazeroapi.Module,
-	kind handler.HeaderKind, buf uint32, bufLimit handler.BufLimit) (countLen handler.CountLen) {
+func (m *middleware) getHeaderNames(ctx context.Context, mod wazeroapi.Module, params []uint64) []uint64 {
+	kind := handler.HeaderKind(params[0])
+	buf := uint32(params[1])
+	bufLimit := handler.BufLimit(params[2])
+
 	var names []string
 	switch kind {
 	case handler.HeaderKindRequest:
@@ -343,13 +382,20 @@ func (m *middleware) getHeaderNames(ctx context.Context, mod wazeroapi.Module,
 	default:
 		panic("unsupported header kind: " + strconv.Itoa(int(kind)))
 	}
-	return writeNULTerminated(ctx, mod.Memory(), buf, bufLimit, names)
+	countLen := writeNULTerminated(ctx, mod.Memory(), buf, bufLimit, names)
+
+	return []uint64{countLen}
 }
 
 // getHeaderValues implements the WebAssembly host function
 // handler.FuncGetHeaderValues.
-func (m *middleware) getHeaderValues(ctx context.Context, mod wazeroapi.Module,
-	kind handler.HeaderKind, name, nameLen, buf uint32, bufLimit handler.BufLimit) (countLen handler.CountLen) {
+func (m *middleware) getHeaderValues(ctx context.Context, mod wazeroapi.Module, params []uint64) []uint64 {
+	kind := handler.HeaderKind(params[0])
+	name := uint32(params[1])
+	nameLen := uint32(params[2])
+	buf := uint32(params[3])
+	bufLimit := handler.BufLimit(params[4])
+
 	if nameLen == 0 {
 		panic("HTTP header name cannot be empty")
 	}
@@ -368,13 +414,20 @@ func (m *middleware) getHeaderValues(ctx context.Context, mod wazeroapi.Module,
 	default:
 		panic("unsupported header kind: " + strconv.Itoa(int(kind)))
 	}
-	return writeNULTerminated(ctx, mod.Memory(), buf, bufLimit, values)
+	countLen := writeNULTerminated(ctx, mod.Memory(), buf, bufLimit, values)
+
+	return []uint64{countLen}
 }
 
 // setHeaderValue implements the WebAssembly host function
 // handler.FuncSetHeaderValue.
-func (m *middleware) setHeaderValue(ctx context.Context, mod wazeroapi.Module,
-	kind handler.HeaderKind, name, nameLen, value, valueLen uint32) {
+func (m *middleware) setHeaderValue(ctx context.Context, mod wazeroapi.Module, params []uint64) (_ []uint64) {
+	kind := handler.HeaderKind(params[0])
+	name := uint32(params[1])
+	nameLen := uint32(params[2])
+	value := uint32(params[3])
+	valueLen := uint32(params[4])
+
 	if nameLen == 0 {
 		panic("HTTP header name cannot be empty")
 	}
@@ -394,12 +447,19 @@ func (m *middleware) setHeaderValue(ctx context.Context, mod wazeroapi.Module,
 	default:
 		panic("unsupported header kind: " + strconv.Itoa(int(kind)))
 	}
+
+	return
 }
 
 // addHeaderValue implements the WebAssembly host function
-// handler.FuncAddHeader.
-func (m *middleware) addHeaderValue(ctx context.Context, mod wazeroapi.Module,
-	kind handler.HeaderKind, name, nameLen, value, valueLen uint32) {
+// handler.FuncAddHeaderValue.
+func (m *middleware) addHeaderValue(ctx context.Context, mod wazeroapi.Module, params []uint64) (_ []uint64) {
+	kind := handler.HeaderKind(params[0])
+	name := uint32(params[1])
+	nameLen := uint32(params[2])
+	value := uint32(params[3])
+	valueLen := uint32(params[4])
+
 	if nameLen == 0 {
 		panic("HTTP header name cannot be empty")
 	}
@@ -419,12 +479,17 @@ func (m *middleware) addHeaderValue(ctx context.Context, mod wazeroapi.Module,
 	default:
 		panic("unsupported header kind: " + strconv.Itoa(int(kind)))
 	}
+
+	return
 }
 
 // removeHeader implements the WebAssembly host function
 // handler.FuncRemoveHeader.
-func (m *middleware) removeHeader(ctx context.Context, mod wazeroapi.Module,
-	kind handler.HeaderKind, name, nameLen uint32) {
+func (m *middleware) removeHeader(ctx context.Context, mod wazeroapi.Module, params []uint64) (_ []uint64) {
+	kind := handler.HeaderKind(params[0])
+	name := uint32(params[1])
+	nameLen := uint32(params[2])
+
 	if nameLen == 0 {
 		panic("HTTP header name cannot be empty")
 	}
@@ -443,11 +508,15 @@ func (m *middleware) removeHeader(ctx context.Context, mod wazeroapi.Module,
 	default:
 		panic("unsupported header kind: " + strconv.Itoa(int(kind)))
 	}
+
+	return
 }
 
 // readBody implements the WebAssembly host function handler.FuncReadBody.
-func (m *middleware) readBody(ctx context.Context, mod wazeroapi.Module,
-	kind handler.BodyKind, buf uint32, bufLimit handler.BufLimit) (eofLen handler.EOFLen) {
+func (m *middleware) readBody(ctx context.Context, mod wazeroapi.Module, params []uint64) []uint64 {
+	kind := handler.BodyKind(params[0])
+	buf := uint32(params[1])
+	bufLimit := handler.BufLimit(params[2])
 
 	var r io.ReadCloser
 	switch kind {
@@ -471,12 +540,16 @@ func (m *middleware) readBody(ctx context.Context, mod wazeroapi.Module,
 		panic("unsupported body kind: " + strconv.Itoa(int(kind)))
 	}
 
-	return readBody(ctx, mod, buf, bufLimit, r)
+	eofLen := readBody(ctx, mod, buf, bufLimit, r)
+
+	return []uint64{eofLen}
 }
 
 // writeBody implements the WebAssembly host function handler.FuncWriteBody.
-func (m *middleware) writeBody(ctx context.Context, mod wazeroapi.Module,
-	kind handler.BodyKind, buf, bufLen uint32) {
+func (m *middleware) writeBody(ctx context.Context, mod wazeroapi.Module, params []uint64) (_ []uint64) {
+	kind := handler.BodyKind(params[0])
+	buf := uint32(params[1])
+	bufLen := uint32(params[2])
 
 	var w io.Writer
 	switch kind {
@@ -501,6 +574,8 @@ func (m *middleware) writeBody(ctx context.Context, mod wazeroapi.Module,
 	}
 
 	writeBody(ctx, mod, buf, bufLen, w)
+
+	return
 }
 
 func writeBody(ctx context.Context, mod wazeroapi.Module, buf, bufLen uint32, w io.Writer) {
@@ -516,18 +591,24 @@ func writeBody(ctx context.Context, mod wazeroapi.Module, buf, bufLen uint32, w 
 
 // getStatusCode implements the WebAssembly host function
 // handler.FuncGetStatusCode.
-func (m *middleware) getStatusCode(ctx context.Context) uint32 {
+func (m *middleware) getStatusCode(ctx context.Context, _ []uint64) []uint64 {
 	_ = mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "get", "status code")
 
-	return m.host.GetStatusCode(ctx)
+	statusCode := m.host.GetStatusCode(ctx)
+
+	return []uint64{uint64(statusCode)}
 }
 
 // setStatusCode implements the WebAssembly host function
 // handler.FuncSetStatusCode.
-func (m *middleware) setStatusCode(ctx context.Context, statusCode uint32) {
+func (m *middleware) setStatusCode(ctx context.Context, params []uint64) (_ []uint64) {
+	statusCode := uint32(params[0])
+
 	_ = mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "set", "status code")
 
 	m.host.SetStatusCode(ctx, statusCode)
+
+	return
 }
 
 func readBody(ctx context.Context, mod wazeroapi.Module, buf uint32, bufLimit handler.BufLimit, r io.Reader) (eofLen uint64) {
@@ -577,44 +658,64 @@ func mustBeforeNextOrFeature(ctx context.Context, feature handler.Features, op, 
 	return
 }
 
+const i32, i64 = wazeroapi.ValueTypeI32, wazeroapi.ValueTypeI64
+
 func (m *middleware) compileHost(ctx context.Context) (wazero.CompiledModule, error) {
 	if compiled, err := m.runtime.NewHostModuleBuilder(handler.HostModule).
-		ExportFunction(handler.FuncEnableFeatures, m.enableFeatures,
-			handler.FuncEnableFeatures, "features").
-		ExportFunction(handler.FuncGetConfig, m.getConfig,
-			handler.FuncGetConfig, "buf", "buf_limit").
-		ExportFunction(handler.FuncLogEnabled, m.logEnabled,
-			handler.FuncLogEnabled, "level").
-		ExportFunction(handler.FuncLog, m.log,
-			handler.FuncLog, "level", "message", "message_len").
-		ExportFunction(handler.FuncGetMethod, m.getMethod,
-			handler.FuncGetMethod, "buf", "buf_limit").
-		ExportFunction(handler.FuncSetMethod, m.setMethod,
-			handler.FuncSetMethod, "method", "method_len").
-		ExportFunction(handler.FuncGetURI, m.getURI,
-			handler.FuncGetURI, "buf", "buf_limit").
-		ExportFunction(handler.FuncSetURI, m.setURI,
-			handler.FuncSetURI, "uri", "uri_len").
-		ExportFunction(handler.FuncGetProtocolVersion, m.getProtocolVersion,
-			handler.FuncGetProtocolVersion, "buf", "buf_limit").
-		ExportFunction(handler.FuncGetHeaderNames, m.getHeaderNames,
-			handler.FuncGetHeaderNames, "kind", "buf", "buf_limit").
-		ExportFunction(handler.FuncGetHeaderValues, m.getHeaderValues,
-			handler.FuncGetHeaderValues, "kind", "name", "name_len", "buf", "buf_limit").
-		ExportFunction(handler.FuncSetHeaderValue, m.setHeaderValue,
-			handler.FuncSetHeaderValue, "kind", "name", "name_len", "value", "value_len").
-		ExportFunction(handler.FuncAddHeaderValue, m.addHeaderValue,
-			handler.FuncAddHeaderValue, "kind", "name", "name_len", "value", "value_len").
-		ExportFunction(handler.FuncRemoveHeader, m.removeHeader,
-			handler.FuncRemoveHeader, "kind", "name", "name_len").
-		ExportFunction(handler.FuncReadBody, m.readBody,
-			handler.FuncReadBody, "kind", "buf", "buf_limit").
-		ExportFunction(handler.FuncWriteBody, m.writeBody,
-			handler.FuncWriteBody, "kind", "body", "body_len").
-		ExportFunction(handler.FuncGetStatusCode, m.getStatusCode,
-			handler.FuncGetStatusCode).
-		ExportFunction(handler.FuncSetStatusCode, m.setStatusCode,
-			handler.FuncSetStatusCode, "status_code").
+		NewFunctionBuilder().
+		WithGoFunction(wazeroapi.GoFunc(m.enableFeatures), []wazeroapi.ValueType{i32}, []wazeroapi.ValueType{i32}).
+		WithParameterNames("features").Export(handler.FuncEnableFeatures).
+		NewFunctionBuilder().
+		WithGoModuleFunction(wazeroapi.GoModuleFunc(m.getConfig), []wazeroapi.ValueType{i32, i32}, []wazeroapi.ValueType{i32}).
+		WithParameterNames("buf", "buf_limit").Export(handler.FuncGetConfig).
+		NewFunctionBuilder().
+		WithGoFunction(wazeroapi.GoFunc(m.logEnabled), []wazeroapi.ValueType{i32}, []wazeroapi.ValueType{i32}).
+		WithParameterNames("level").Export(handler.FuncLogEnabled).
+		NewFunctionBuilder().
+		WithGoModuleFunction(wazeroapi.GoModuleFunc(m.log), []wazeroapi.ValueType{i32, i32, i32}, []wazeroapi.ValueType{}).
+		WithParameterNames("level", "message", "message_len").Export(handler.FuncLog).
+		NewFunctionBuilder().
+		WithGoModuleFunction(wazeroapi.GoModuleFunc(m.getMethod), []wazeroapi.ValueType{i32, i32}, []wazeroapi.ValueType{i32}).
+		WithParameterNames("buf", "buf_limit").Export(handler.FuncGetMethod).
+		NewFunctionBuilder().
+		WithGoModuleFunction(wazeroapi.GoModuleFunc(m.setMethod), []wazeroapi.ValueType{i32, i32}, []wazeroapi.ValueType{}).
+		WithParameterNames("method", "method_len").Export(handler.FuncSetMethod).
+		NewFunctionBuilder().
+		WithGoModuleFunction(wazeroapi.GoModuleFunc(m.getURI), []wazeroapi.ValueType{i32, i32}, []wazeroapi.ValueType{i32}).
+		WithParameterNames("buf", "buf_limit").Export(handler.FuncGetURI).
+		NewFunctionBuilder().
+		WithGoModuleFunction(wazeroapi.GoModuleFunc(m.setURI), []wazeroapi.ValueType{i32, i32}, []wazeroapi.ValueType{}).
+		WithParameterNames("uri", "uri_len").Export(handler.FuncSetURI).
+		NewFunctionBuilder().
+		WithGoModuleFunction(wazeroapi.GoModuleFunc(m.getProtocolVersion), []wazeroapi.ValueType{i32, i32}, []wazeroapi.ValueType{i32}).
+		WithParameterNames("buf", "buf_limit").Export(handler.FuncGetProtocolVersion).
+		NewFunctionBuilder().
+		WithGoModuleFunction(wazeroapi.GoModuleFunc(m.getHeaderNames), []wazeroapi.ValueType{i32, i32, i32}, []wazeroapi.ValueType{i64}).
+		WithParameterNames("kind", "buf", "buf_limit").Export(handler.FuncGetHeaderNames).
+		NewFunctionBuilder().
+		WithGoModuleFunction(wazeroapi.GoModuleFunc(m.getHeaderValues), []wazeroapi.ValueType{i32, i32, i32, i32, i32}, []wazeroapi.ValueType{i64}).
+		WithParameterNames("kind", "name", "name_len", "buf", "buf_limit").Export(handler.FuncGetHeaderValues).
+		NewFunctionBuilder().
+		WithGoModuleFunction(wazeroapi.GoModuleFunc(m.setHeaderValue), []wazeroapi.ValueType{i32, i32, i32, i32, i32}, []wazeroapi.ValueType{}).
+		WithParameterNames("kind", "name", "name_len", "value", "value").Export(handler.FuncSetHeaderValue).
+		NewFunctionBuilder().
+		WithGoModuleFunction(wazeroapi.GoModuleFunc(m.addHeaderValue), []wazeroapi.ValueType{i32, i32, i32, i32, i32}, []wazeroapi.ValueType{}).
+		WithParameterNames("kind", "name", "name_len", "value", "value").Export(handler.FuncAddHeaderValue).
+		NewFunctionBuilder().
+		WithGoModuleFunction(wazeroapi.GoModuleFunc(m.removeHeader), []wazeroapi.ValueType{i32, i32, i32}, []wazeroapi.ValueType{}).
+		WithParameterNames("kind", "name", "name_len").Export(handler.FuncRemoveHeader).
+		NewFunctionBuilder().
+		WithGoModuleFunction(wazeroapi.GoModuleFunc(m.readBody), []wazeroapi.ValueType{i32, i32, i32}, []wazeroapi.ValueType{i64}).
+		WithParameterNames("kind", "buf", "buf_limit").Export(handler.FuncReadBody).
+		NewFunctionBuilder().
+		WithGoModuleFunction(wazeroapi.GoModuleFunc(m.writeBody), []wazeroapi.ValueType{i32, i32, i32}, []wazeroapi.ValueType{}).
+		WithParameterNames("kind", "body", "body_len").Export(handler.FuncWriteBody).
+		NewFunctionBuilder().
+		WithGoFunction(wazeroapi.GoFunc(m.getStatusCode), []wazeroapi.ValueType{}, []wazeroapi.ValueType{i32}).
+		WithParameterNames().Export(handler.FuncGetStatusCode).
+		NewFunctionBuilder().
+		WithGoFunction(wazeroapi.GoFunc(m.setStatusCode), []wazeroapi.ValueType{i32}, []wazeroapi.ValueType{}).
+		WithParameterNames("status_code").Export(handler.FuncSetStatusCode).
 		Compile(ctx); err != nil {
 		return nil, fmt.Errorf("wasm: error compiling host: %w", err)
 	} else {

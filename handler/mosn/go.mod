@@ -4,6 +4,8 @@ go 1.18
 
 require (
 	github.com/http-wasm/http-wasm-host-go v0.0.0-20221011003337-81d8f3916f05
+	github.com/tetratelabs/wazero v1.0.0-pre.2.0.20221028145108-be33572289ac
+	github.com/valyala/fasthttp v1.14.1-0.20200605121233-ac51d598dc54
 	mosn.io/api v1.1.0
 	mosn.io/mosn v1.1.0
 	mosn.io/pkg v1.1.0
@@ -33,11 +35,9 @@ require (
 	github.com/rcrowley/go-metrics v0.0.0-20200313005456-10cdbea86bc0 // indirect
 	github.com/russross/blackfriday/v2 v2.0.1 // indirect
 	github.com/shurcooL/sanitized_anchor_name v1.0.0 // indirect
-	github.com/tetratelabs/wazero v1.0.0-pre.2.0.20221003082636-0b4dbfd8d6ca // indirect
 	github.com/trainyao/go-maglev v0.0.0-20200611125015-4c1ae64d96a8 // indirect
 	github.com/urfave/cli v1.22.1 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
-	github.com/valyala/fasthttp v1.14.1-0.20200605121233-ac51d598dc54 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/automaxprocs v1.3.0 // indirect
 	golang.org/x/crypto v0.0.0-20201002170205-7f63de1d35b0 // indirect
