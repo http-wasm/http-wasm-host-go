@@ -53,7 +53,7 @@
       (br_if $names (i32.gt_u (local.get $len) (i32.const 0))))
 
     ;; if count != expected_count { panic }
-    (if (i32.eq (local.get $count) (local.get $expected_count))
+    (if (i32.ne (local.get $count) (local.get $expected_count))
       (then (unreachable))) ;; the result wasn't NUL-terminated
 
     ;; uint32(ctx_next) == 1 means proceed to the next handler on the host.
