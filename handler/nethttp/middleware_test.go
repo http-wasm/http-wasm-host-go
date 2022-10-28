@@ -124,6 +124,8 @@ func TestURI(t *testing.T) {
 		if want, have := "/v1.0/hi?name=panda", string(body); want != have {
 			t.Fatalf("unexpected request body, want: %q, have: %q", want, have)
 		}
+
+		w.Write([]byte(responseBody))
 	})
 
 	ts = httptest.NewServer(mw.NewHandler(testCtx, next))
@@ -134,6 +136,13 @@ func TestURI(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want, have := responseBody, string(body); want != have {
+		t.Fatalf("unexpected response body, want: %q, have: %q", want, have)
+	}
 }
 
 func TestProtocolVersion(t *testing.T) {
