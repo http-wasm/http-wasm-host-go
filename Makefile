@@ -1,5 +1,5 @@
-goimports := golang.org/x/tools/cmd/goimports@v0.1.12
-golangci_lint := github.com/golangci/golangci-lint/cmd/golangci-lint@v1.50.0
+goimports := golang.org/x/tools/cmd/goimports@v0.2.0
+golangci_lint := github.com/golangci/golangci-lint/cmd/golangci-lint@v1.50.1
 
 .PHONY: testdata
 testdata:
@@ -15,7 +15,6 @@ build.wat: $(wat_sources)
 .PHONY: test
 test:
 	@go test -v ./...
-	@cd handler/mosn && go test -v ./...
 
 .PHONY: bench
 bench:
