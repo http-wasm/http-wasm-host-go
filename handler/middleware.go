@@ -1,6 +1,4 @@
-// Package internalhandler is not named handler as doing so interferes with
-// godoc links for the api handler package.
-package internalhandler
+package handler
 
 import (
 	"bytes"
@@ -13,10 +11,8 @@ import (
 	"github.com/tetratelabs/wazero"
 	wazeroapi "github.com/tetratelabs/wazero/api"
 
-	httpwasm "github.com/http-wasm/http-wasm-host-go"
 	"github.com/http-wasm/http-wasm-host-go/api"
 	"github.com/http-wasm/http-wasm-host-go/api/handler"
-	"github.com/http-wasm/http-wasm-host-go/internal"
 )
 
 // Middleware implements the http-wasm handler ABI.
@@ -49,7 +45,7 @@ type middleware struct {
 	host                    handler.Host
 	runtime                 wazero.Runtime
 	hostModule, guestModule wazero.CompiledModule
-	newNamespace            httpwasm.NewNamespace
+	newNamespace            NewNamespace
 	moduleConfig            wazero.ModuleConfig
 	guestConfig             []byte
 	logger                  api.Logger
@@ -61,18 +57,18 @@ func (m *middleware) Features() handler.Features {
 	return m.features
 }
 
-func NewMiddleware(ctx context.Context, guest []byte, host handler.Host, options ...httpwasm.Option) (Middleware, error) {
-	o := &internal.WazeroOptions{
-		NewRuntime:   internal.DefaultRuntime,
-		NewNamespace: internal.DefaultNamespace,
-		ModuleConfig: wazero.NewModuleConfig(),
-		Logger:       api.NoopLogger{},
+func NewMiddleware(ctx context.Context, guest []byte, host handler.Host, opts ...Option) (Middleware, error) {
+	o := &options{
+		newRuntime:   DefaultRuntime,
+		newNamespace: DefaultNamespace,
+		moduleConfig: wazero.NewModuleConfig(),
+		logger:       api.NoopLogger{},
 	}
-	for _, option := range options {
-		option(o)
+	for _, opt := range opts {
+		opt(o)
 	}
 
-	wr, err := o.NewRuntime(ctx)
+	wr, err := o.newRuntime(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("wasm: error creating middleware: %w", err)
 	}
@@ -80,10 +76,10 @@ func NewMiddleware(ctx context.Context, guest []byte, host handler.Host, options
 	m := &middleware{
 		host:         host,
 		runtime:      wr,
-		newNamespace: o.NewNamespace,
-		moduleConfig: o.ModuleConfig,
-		guestConfig:  o.GuestConfig,
-		logger:       o.Logger,
+		newNamespace: o.newNamespace,
+		moduleConfig: o.moduleConfig,
+		guestConfig:  o.guestConfig,
+		logger:       o.logger,
 	}
 
 	if m.hostModule, err = m.compileHost(ctx); err != nil {

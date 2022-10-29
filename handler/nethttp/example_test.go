@@ -13,8 +13,8 @@ import (
 
 	"github.com/tetratelabs/wazero"
 
-	httpwasm "github.com/http-wasm/http-wasm-host-go"
 	"github.com/http-wasm/http-wasm-host-go/api"
+	"github.com/http-wasm/http-wasm-host-go/handler"
 	wasm "github.com/http-wasm/http-wasm-host-go/handler/nethttp"
 	"github.com/http-wasm/http-wasm-host-go/internal/test"
 )
@@ -104,7 +104,7 @@ func Example_wasi() {
 	// Configure and compile the WebAssembly guest binary. In this case, it
 	// prints the request and response to the STDOUT via WASI.
 	mw, err := wasm.NewMiddleware(ctx, test.BinExampleWASI,
-		httpwasm.ModuleConfig(moduleConfig))
+		handler.ModuleConfig(moduleConfig))
 	if err != nil {
 		log.Panicln(err)
 	}
@@ -171,7 +171,7 @@ func Example_log() {
 
 	// Configure and compile the WebAssembly guest binary. In this case, it is
 	// a logging interceptor.
-	mw, err := wasm.NewMiddleware(ctx, test.BinExampleLog, httpwasm.Logger(api.ConsoleLogger{}))
+	mw, err := wasm.NewMiddleware(ctx, test.BinExampleLog, handler.Logger(api.ConsoleLogger{}))
 	if err != nil {
 		log.Panicln(err)
 	}
@@ -247,7 +247,7 @@ func Example_redact() {
 	// an example response redact.
 	secret := "open sesame"
 	mw, err := wasm.NewMiddleware(ctx, test.BinExampleRedact,
-		httpwasm.GuestConfig([]byte(secret)))
+		handler.GuestConfig([]byte(secret)))
 	if err != nil {
 		log.Panicln(err)
 	}
