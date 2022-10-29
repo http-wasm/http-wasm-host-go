@@ -1,4 +1,4 @@
-package internalhandler
+package handler
 
 import (
 	"bytes"

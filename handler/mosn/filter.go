@@ -11,10 +11,9 @@ import (
 	"mosn.io/mosn/pkg/log"
 	mosnhttp "mosn.io/mosn/pkg/protocol/http"
 
-	httpwasm "github.com/http-wasm/http-wasm-host-go"
 	"github.com/http-wasm/http-wasm-host-go/api"
-	"github.com/http-wasm/http-wasm-host-go/api/handler"
-	internalhandler "github.com/http-wasm/http-wasm-host-go/internal/handler"
+	handlerapi "github.com/http-wasm/http-wasm-host-go/api/handler"
+	"github.com/http-wasm/http-wasm-host-go/handler"
 )
 
 // compile-time check to ensure proxyLogger implements api.Logger.
@@ -82,14 +81,14 @@ func factoryCreator(config map[string]interface{}) (mosnapi.StreamFilterChainFac
 		return nil, err
 	}
 	ctx := context.Background()
-	m, err := internalhandler.NewMiddleware(ctx, code, host{},
-		httpwasm.GuestConfig([]byte(conf)),
-		httpwasm.Logger(proxyLogger{}),
+	m, err := handler.NewMiddleware(ctx, code, host{},
+		handler.GuestConfig([]byte(conf)),
+		handler.Logger(proxyLogger{}),
 		// TODO: verify stdio strategy with mosn lead
-		httpwasm.ModuleConfig(wazero.NewModuleConfig().
+		handler.ModuleConfig(wazero.NewModuleConfig().
 			WithStdout(os.Stdout).
 			WithStderr(os.Stderr)))
-	runtime.SetFinalizer(m, func(m internalhandler.Middleware) {
+	runtime.SetFinalizer(m, func(m handler.Middleware) {
 		m.Close(context.Background())
 	})
 	if err != nil {
@@ -100,7 +99,7 @@ func factoryCreator(config map[string]interface{}) (mosnapi.StreamFilterChainFac
 }
 
 type filterFactory struct {
-	m internalhandler.Middleware
+	m handler.Middleware
 }
 
 func (f filterFactory) CreateFilterChain(_ context.Context, callbacks mosnapi.StreamFilterChainFactoryCallbacks) {
@@ -110,21 +109,21 @@ func (f filterFactory) CreateFilterChain(_ context.Context, callbacks mosnapi.St
 }
 
 type filter struct {
-	m internalhandler.Middleware
+	m handler.Middleware
 
 	receiverFilterHandler mosnapi.StreamReceiverFilterHandler
 
 	reqHeaders mosnapi.HeaderMap
 	reqBody    mosnapi.IoBuffer
 
-	ctxNext handler.CtxNext
+	ctxNext handlerapi.CtxNext
 	reqCtx  context.Context
 
 	respHeaders mosnapi.HeaderMap
 	statusCode  int
 	respBody    []byte
 
-	features handler.Features
+	features handlerapi.Features
 }
 
 func (f *filter) OnReceive(ctx context.Context, headers mosnapi.HeaderMap, body mosnapi.IoBuffer, _ mosnapi.HeaderMap) mosnapi.StreamFilterStatus {
@@ -202,7 +201,7 @@ func (f *filter) SetSenderFilterHandler(mosnapi.StreamSenderFilterHandler) {
 
 type filterKey struct{}
 
-func (f *filter) enableFeatures(features handler.Features) {
+func (f *filter) enableFeatures(features handlerapi.Features) {
 	f.features = f.features.WithEnabled(features)
 }
 

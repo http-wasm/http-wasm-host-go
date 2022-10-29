@@ -6,22 +6,21 @@ import (
 	"io"
 	"net/http"
 
-	httpwasm "github.com/http-wasm/http-wasm-host-go"
-	"github.com/http-wasm/http-wasm-host-go/api/handler"
-	internalhandler "github.com/http-wasm/http-wasm-host-go/internal/handler"
+	handlerapi "github.com/http-wasm/http-wasm-host-go/api/handler"
+	"github.com/http-wasm/http-wasm-host-go/handler"
 )
 
 // compile-time checks to ensure interfaces are implemented.
 var _ http.Handler = (*guest)(nil)
 
-type Middleware handler.Middleware[http.Handler]
+type Middleware handlerapi.Middleware[http.Handler]
 
 type middleware struct {
-	m internalhandler.Middleware
+	m handler.Middleware
 }
 
-func NewMiddleware(ctx context.Context, guest []byte, options ...httpwasm.Option) (Middleware, error) {
-	m, err := internalhandler.NewMiddleware(ctx, guest, host{}, options...)
+func NewMiddleware(ctx context.Context, guest []byte, options ...handler.Option) (Middleware, error) {
+	m, err := handler.NewMiddleware(ctx, guest, host{}, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +35,7 @@ type requestState struct {
 	w        http.ResponseWriter
 	r        *http.Request
 	next     http.Handler
-	features handler.Features
+	features handlerapi.Features
 }
 
 func newRequestState(w http.ResponseWriter, r *http.Request, g *guest) *requestState {
@@ -45,12 +44,12 @@ func newRequestState(w http.ResponseWriter, r *http.Request, g *guest) *requestS
 	return s
 }
 
-func (s *requestState) enableFeatures(features handler.Features) {
+func (s *requestState) enableFeatures(features handlerapi.Features) {
 	s.features = s.features.WithEnabled(features)
-	if features.IsEnabled(handler.FeatureBufferRequest) {
+	if features.IsEnabled(handlerapi.FeatureBufferRequest) {
 		s.r.Body = &bufferingRequestBody{delegate: s.r.Body}
 	}
-	if s.features.IsEnabled(handler.FeatureBufferResponse) {
+	if s.features.IsEnabled(handlerapi.FeatureBufferResponse) {
 		if _, ok := s.w.(*bufferingResponseWriter); !ok { // don't double-wrap
 			s.w = &bufferingResponseWriter{delegate: s.w}
 		}
@@ -102,10 +101,10 @@ func (w *middleware) Close(ctx context.Context) error {
 }
 
 type guest struct {
-	handleRequest  func(ctx context.Context) (outCtx context.Context, ctxNext handler.CtxNext, err error)
+	handleRequest  func(ctx context.Context) (outCtx context.Context, ctxNext handlerapi.CtxNext, err error)
 	handleResponse func(ctx context.Context, reqCtx uint32, err error) error
 	next           http.Handler
-	features       handler.Features
+	features       handlerapi.Features
 }
 
 // ServeHTTP implements http.Handler

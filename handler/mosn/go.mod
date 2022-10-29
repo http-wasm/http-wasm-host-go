@@ -3,7 +3,7 @@ module github.com/http-wasm/http-wasm-host-go/handler/mosn
 go 1.18
 
 require (
-	github.com/http-wasm/http-wasm-host-go v0.0.0-20221011003337-81d8f3916f05
+	github.com/http-wasm/http-wasm-host-go v0.0.0-20221029155151-04251101894e
 	github.com/tetratelabs/wazero v1.0.0-pre.3
 	github.com/valyala/fasthttp v1.14.1-0.20200605121233-ac51d598dc54
 	mosn.io/api v1.1.0

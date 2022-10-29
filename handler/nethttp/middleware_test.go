@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	httpwasm "github.com/http-wasm/http-wasm-host-go"
-	"github.com/http-wasm/http-wasm-host-go/api/handler"
+	handlerapi "github.com/http-wasm/http-wasm-host-go/api/handler"
+	"github.com/http-wasm/http-wasm-host-go/handler"
 	wasm "github.com/http-wasm/http-wasm-host-go/handler/nethttp"
 	"github.com/http-wasm/http-wasm-host-go/internal/test"
 )
@@ -21,13 +21,13 @@ var (
 )
 
 func TestConfig(t *testing.T) {
-	tests := []handler.Features{
+	tests := []handlerapi.Features{
 		0,
-		handler.FeatureBufferRequest,
-		handler.FeatureBufferResponse,
-		handler.FeatureTrailers,
-		handler.FeatureBufferRequest | handler.FeatureBufferResponse,
-		handler.FeatureBufferRequest | handler.FeatureBufferResponse | handler.FeatureTrailers,
+		handlerapi.FeatureBufferRequest,
+		handlerapi.FeatureBufferResponse,
+		handlerapi.FeatureTrailers,
+		handlerapi.FeatureBufferRequest | handlerapi.FeatureBufferResponse,
+		handlerapi.FeatureBufferRequest | handlerapi.FeatureBufferResponse | handlerapi.FeatureTrailers,
 	}
 
 	for _, tt := range tests {
@@ -35,7 +35,7 @@ func TestConfig(t *testing.T) {
 		t.Run(tc.String(), func(t *testing.T) {
 			guestConfig := make([]byte, 8)
 			binary.LittleEndian.PutUint64(guestConfig, uint64(tc))
-			mw, err := wasm.NewMiddleware(testCtx, test.BinExampleConfig, httpwasm.GuestConfig(guestConfig))
+			mw, err := wasm.NewMiddleware(testCtx, test.BinExampleConfig, handler.GuestConfig(guestConfig))
 			if err != nil {
 				t.Fatal(err)
 			}
