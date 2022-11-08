@@ -1,6 +1,7 @@
 package wasm
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -11,159 +12,27 @@ import (
 	"testing"
 
 	"github.com/http-wasm/http-wasm-host-go/internal/test"
+	"github.com/http-wasm/http-wasm-host-go/testing/handlertest"
 )
 
 var testCtx = context.Background()
 
-func Test_host_GetMethod(t *testing.T) {
-	tests := []string{"GET", "POST", "OPTIONS"}
+func Test_host(t *testing.T) {
+	newCtx := func() context.Context {
+		r, err := http.NewRequest("GET", "", bytes.NewReader(nil))
+		if err != nil {
+			t.Fatal(err)
+		}
+		w := &bufferingResponseWriter{delegate: &httptest.ResponseRecorder{HeaderMap: map[string][]string{}}}
+		return context.WithValue(testCtx, requestStateKey{}, &requestState{r: r, w: w})
+	}
 
-	h := host{}
-	for _, tt := range tests {
-		tc := tt
-		t.Run(tc, func(t *testing.T) {
-			ctx, r := newTestRequestContext()
-			r.Method = tc
-
-			if want, have := tc, h.GetMethod(ctx); want != have {
-				t.Errorf("unexpected method, want: %v, have: %v", want, have)
-			}
-		})
+	if err := handlertest.TestHost(host{}, newCtx); err != nil {
+		t.Fatal(err)
 	}
 }
 
-func Test_host_SetMethod(t *testing.T) {
-	tests := []string{"GET", "POST", "OPTIONS"}
-
-	h := host{}
-	for _, tt := range tests {
-		tc := tt
-		t.Run(tc, func(t *testing.T) {
-			ctx, r := newTestRequestContext()
-
-			h.SetMethod(ctx, tc)
-			if want, have := tc, r.Method; want != have {
-				t.Errorf("unexpected method, want: %v, have: %v", want, have)
-			}
-		})
-	}
-}
-
-func Test_host_GetURI(t *testing.T) {
-	tests := []struct {
-		name     string
-		url      *url.URL
-		expected string
-	}{
-		{
-			name: "coerces empty path to slash",
-			url: &url.URL{
-				Scheme: "http",
-				Host:   "example.com",
-				Path:   "",
-			},
-			expected: "/",
-		},
-		{
-			name: "encodes space",
-			url: &url.URL{
-				Scheme: "http",
-				Host:   "example.com",
-				Path:   "/a b",
-			},
-			expected: "/a%20b",
-		},
-		{
-			name: "encodes query",
-			url: &url.URL{
-				Scheme:   "http",
-				Host:     "example.com",
-				Path:     "/a b",
-				RawQuery: "q=go+language",
-			},
-			expected: "/a%20b?q=go+language",
-		},
-		{
-			name: "double slash path",
-			url: &url.URL{
-				Scheme: "http",
-				Host:   "example.com",
-				Path:   "//foo",
-			},
-			expected: "//foo",
-		},
-		{
-			name: "empty query",
-			url: &url.URL{
-				Scheme:     "http",
-				Host:       "example.com",
-				Path:       "/foo",
-				ForceQuery: true,
-			},
-			expected: "/foo?",
-		},
-	}
-
-	h := host{}
-	for _, tt := range tests {
-		tc := tt
-		t.Run(tc.name, func(t *testing.T) {
-			ctx, r := newTestRequestContext()
-			r.URL = tc.url
-
-			if want, have := tc.expected, h.GetURI(ctx); want != have {
-				t.Errorf("unexpected uri, want: %v, have: %v", want, have)
-			}
-		})
-	}
-}
-
-func Test_host_SetURI(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{
-			name:     "coerces empty path to slash",
-			expected: "/",
-		},
-		{
-			name:     "encodes space",
-			input:    "/a%20b",
-			expected: "/a%20b",
-		},
-		{
-			name:     "encodes query",
-			input:    "/a%20b?q=go+language",
-			expected: "/a%20b?q=go+language",
-		},
-		{
-			name:     "double slash path",
-			input:    "//foo",
-			expected: "//foo",
-		},
-		{
-			name:     "empty query",
-			input:    "/foo?",
-			expected: "/foo?",
-		},
-	}
-
-	h := host{}
-	for _, tt := range tests {
-		tc := tt
-		t.Run(tc.name, func(t *testing.T) {
-			ctx, r := newTestRequestContext()
-
-			h.SetURI(ctx, tc.input)
-			if want, have := tc.expected, r.URL.RequestURI(); want != have {
-				t.Errorf("unexpected uri, want: %v, have: %v", want, have)
-			}
-		})
-	}
-}
-
+// Test_host_GetProtocolVersion ensures HTTP/2.0 is readable
 func Test_host_GetProtocolVersion(t *testing.T) {
 	tests := []string{"HTTP/1.1", "HTTP/2.0"}
 

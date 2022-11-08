@@ -84,6 +84,7 @@ func (host) GetProtocolVersion(ctx context.Context) string {
 // GetRequestHeaderNames implements the same method as documented on handler.Host.
 func (host) GetRequestHeaderNames(ctx context.Context) (names []string) {
 	r := requestStateFromContext(ctx).r
+
 	count := len(r.Header)
 	i := 0
 	if r.Host != "" { // special-case the host header.
@@ -91,9 +92,12 @@ func (host) GetRequestHeaderNames(ctx context.Context) (names []string) {
 		names = make([]string, count)
 		names[i] = "Host"
 		i++
+	} else if count == 0 {
+		return nil
 	} else {
 		names = make([]string, count)
 	}
+
 	for n := range r.Header {
 		if strings.HasPrefix(n, http.TrailerPrefix) {
 			continue
@@ -101,6 +105,11 @@ func (host) GetRequestHeaderNames(ctx context.Context) (names []string) {
 		names[i] = n
 		i++
 	}
+
+	if len(names) == 0 { // E.g. only trailers
+		return nil
+	}
+
 	// Keys in a Go map don't have consistent ordering.
 	sort.Strings(names)
 	return
@@ -208,6 +217,10 @@ func (host) GetResponseHeaderNames(ctx context.Context) (names []string) {
 
 	// allocate capacity == count though it might be smaller due to trailers.
 	count := len(w.Header())
+	if count == 0 {
+		return nil
+	}
+
 	names = make([]string, 0, count)
 
 	for n := range w.Header() {
@@ -215,6 +228,10 @@ func (host) GetResponseHeaderNames(ctx context.Context) (names []string) {
 			continue
 		}
 		names = append(names, n)
+	}
+
+	if len(names) == 0 { // E.g. only trailers
+		return nil
 	}
 	// Keys in a Go map don't have consistent ordering.
 	sort.Strings(names)
