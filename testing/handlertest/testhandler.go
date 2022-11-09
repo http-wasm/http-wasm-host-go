@@ -10,6 +10,7 @@ import (
 	"errors"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/http-wasm/http-wasm-host-go/api/handler"
@@ -124,12 +125,12 @@ func (h *hostTester) testURI() {
 	}
 
 	h.t.Run("SetURI", func(t *testing.T) {
-		for _, tt := range tests {
+		for _, tc := range tests {
 
-			h.h.SetURI(ctx, tt.set)
+			h.h.SetURI(ctx, tc.set)
 
-			if have := h.h.GetURI(ctx); tt.want != have {
-				t.Errorf("unexpected URI, set: %v, want: %v, have: %v", tt.set, tt.want, have)
+			if have := h.h.GetURI(ctx); tc.want != have {
+				t.Errorf("unexpected URI, set: %v, want: %v, have: %v", tc.set, tc.want, have)
 			}
 		}
 	})
@@ -147,6 +148,19 @@ func (h *hostTester) testProtocolVersion() {
 
 func (h *hostTester) testRequestHeaders() {
 	h.testRequestHeaderNames()
+	h.testGetRequestHeaderValues()
+	h.testSetRequestHeaderValue()
+	h.testAddRequestHeaderValue()
+	h.testRemoveRequestHeaderValue()
+}
+
+func (h *hostTester) addTestRequestHeaders(ctx context.Context) {
+	for k, vs := range testRequestHeaders {
+		h.h.SetRequestHeaderValue(ctx, k, vs[0])
+		for _, v := range vs[1:] {
+			h.h.AddRequestHeaderValue(ctx, k, v)
+		}
+	}
 }
 
 func (h *hostTester) testRequestHeaderNames() {
@@ -159,9 +173,10 @@ func (h *hostTester) testRequestHeaderNames() {
 	})
 
 	h.t.Run("GetRequestHeaderNames", func(t *testing.T) {
+		h.addTestRequestHeaders(ctx)
+
 		var want []string
-		for k, vs := range testRequestHeaders {
-			h.h.SetRequestHeaderValue(ctx, k, vs[0])
+		for k := range testRequestHeaders {
 			want = append(want, k)
 		}
 		sort.Strings(want)
@@ -170,6 +185,190 @@ func (h *hostTester) testRequestHeaderNames() {
 		sort.Strings(have)
 		if !reflect.DeepEqual(want, have) {
 			t.Errorf("unexpected header names, want: %v, have: %v", want, have)
+		}
+	})
+}
+
+func (h *hostTester) testGetRequestHeaderValues() {
+	ctx, _ := h.newCtx(0) // no features required
+	h.addTestRequestHeaders(ctx)
+
+	tests := []struct {
+		name       string
+		headerName string
+		want       []string
+	}{
+		{
+			name:       "single value",
+			headerName: "Content-Type",
+			want:       []string{"text/plain"},
+		},
+		{
+			name:       "multi-field with comma value",
+			headerName: "X-Forwarded-For",
+			want:       []string{"client, proxy1", "proxy2"},
+		},
+		{
+			name:       "empty value",
+			headerName: "Empty",
+			want:       []string{""},
+		},
+		{
+			name:       "no value",
+			headerName: "Not Found",
+		},
+	}
+
+	h.t.Run("GetRequestHeaderValues", func(t *testing.T) {
+		for _, tc := range tests {
+			values := h.h.GetRequestHeaderValues(ctx, tc.headerName)
+
+			if want, have := tc.want, values; !reflect.DeepEqual(want, have) {
+				t.Errorf("%s: unexpected header values, want: %v, have: %v", tc.name, want, have)
+			}
+		}
+	})
+}
+
+func (h *hostTester) testSetRequestHeaderValue() {
+	ctx, _ := h.newCtx(0) // no features required
+	h.addTestRequestHeaders(ctx)
+
+	tests := []struct {
+		name       string
+		headerName string
+		want       string
+	}{
+		{
+			name:       "non-existing",
+			headerName: "custom",
+			want:       "1",
+		},
+		{
+			name:       "existing",
+			headerName: "Content-Type",
+			want:       "application/json",
+		},
+		{
+			name:       "existing lowercase",
+			headerName: "content-type",
+			want:       "application/json",
+		},
+		{
+			name:       "set to empty",
+			headerName: "Custom",
+		},
+		{
+			name:       "multi-field",
+			headerName: "X-Forwarded-For",
+			want:       "proxy2",
+		},
+		{
+			name:       "set multi-field to empty",
+			headerName: "X-Forwarded-For",
+			want:       "",
+		},
+	}
+
+	h.t.Run("SetRequestHeaderValue", func(t *testing.T) {
+		for _, tc := range tests {
+			h.h.SetRequestHeaderValue(ctx, tc.headerName, tc.want)
+
+			if want, have := tc.want, strings.Join(h.h.GetRequestHeaderValues(ctx, tc.headerName), "|"); want != have {
+				t.Errorf("%s: unexpected header, want: %v, have: %v", tc.name, want, have)
+			}
+		}
+	})
+}
+
+func (h *hostTester) testAddRequestHeaderValue() {
+	tests := []struct {
+		name       string
+		headerName string
+		value      string
+		want       []string
+	}{
+		{
+			name:       "non-existing",
+			headerName: "new",
+			value:      "1",
+			want:       []string{"1"},
+		},
+		{
+			name:       "empty",
+			headerName: "new",
+			want:       []string{""},
+		},
+		{
+			name:       "existing",
+			headerName: "X-Forwarded-For",
+			value:      "proxy3",
+			want:       []string{"client, proxy1", "proxy2", "proxy3"},
+		},
+		{
+			name:       "lowercase",
+			headerName: "x-forwarded-for",
+			value:      "proxy3",
+			want:       []string{"client, proxy1", "proxy2", "proxy3"},
+		},
+		{
+			name:       "existing empty",
+			headerName: "X-Forwarded-For",
+			want:       []string{"client, proxy1", "proxy2", ""},
+		},
+	}
+
+	h.t.Run("AddRequestHeaderValue", func(t *testing.T) {
+		for _, tc := range tests {
+			ctx, _ := h.newCtx(0) // no features required
+			h.addTestRequestHeaders(ctx)
+
+			h.h.AddRequestHeaderValue(ctx, tc.headerName, tc.value)
+
+			if want, have := tc.want, h.h.GetRequestHeaderValues(ctx, tc.headerName); !reflect.DeepEqual(want, have) {
+				t.Errorf("%s: unexpected header, want: %v, have: %v", tc.name, want, have)
+			}
+		}
+	})
+}
+
+func (h *hostTester) testRemoveRequestHeaderValue() {
+	ctx, _ := h.newCtx(0) // no features required
+	h.addTestRequestHeaders(ctx)
+
+	tests := []struct {
+		name       string
+		headerName string
+	}{
+		{
+			name:       "doesn't exist",
+			headerName: "custom",
+		},
+		{
+			name:       "empty",
+			headerName: "Empty",
+		},
+		{
+			name:       "exists",
+			headerName: "Custom",
+		},
+		{
+			name:       "lowercase",
+			headerName: "custom",
+		},
+		{
+			name:       "multi-field",
+			headerName: "X-Forwarded-For",
+		},
+	}
+
+	h.t.Run("RemoveRequestHeader", func(t *testing.T) {
+		for _, tc := range tests {
+			h.h.RemoveRequestHeader(ctx, tc.headerName)
+
+			if have := h.h.GetRequestHeaderValues(ctx, tc.headerName); len(have) > 0 {
+				t.Errorf("%s: unexpected headers: %v", tc.name, have)
+			}
 		}
 	})
 }
@@ -218,6 +417,19 @@ func (h *hostTester) testStatusCode() {
 
 func (h *hostTester) testResponseHeaders() {
 	h.testResponseHeaderNames()
+	h.testGetResponseHeaderValues()
+	h.testSetResponseHeaderValue()
+	h.testAddResponseHeaderValue()
+	h.testRemoveResponseHeaderValue()
+}
+
+func (h *hostTester) addTestResponseHeaders(ctx context.Context) {
+	for k, vs := range testResponseHeaders {
+		h.h.SetResponseHeaderValue(ctx, k, vs[0])
+		for _, v := range vs[1:] {
+			h.h.AddResponseHeaderValue(ctx, k, v)
+		}
+	}
 }
 
 func (h *hostTester) testResponseHeaderNames() {
@@ -230,9 +442,10 @@ func (h *hostTester) testResponseHeaderNames() {
 	})
 
 	h.t.Run("GetResponseHeaderNames", func(t *testing.T) {
+		h.addTestResponseHeaders(ctx)
+
 		var want []string
-		for k, vs := range testResponseHeaders {
-			h.h.SetResponseHeaderValue(ctx, k, vs[0])
+		for k := range testResponseHeaders {
 			want = append(want, k)
 		}
 		sort.Strings(want)
@@ -241,6 +454,191 @@ func (h *hostTester) testResponseHeaderNames() {
 		sort.Strings(have)
 		if !reflect.DeepEqual(want, have) {
 			t.Errorf("unexpected header names, want: %v, have: %v", want, have)
+		}
+	})
+}
+
+func (h *hostTester) testGetResponseHeaderValues() {
+	ctx, _ := h.newCtx(0) // no features required
+	h.addTestResponseHeaders(ctx)
+
+	tests := []struct {
+		name       string
+		headerName string
+		want       []string
+	}{
+		{
+			name:       "single value",
+			headerName: "Content-Type",
+			want:       []string{"text/plain"},
+		},
+		{
+			name:       "multi-field with comma value",
+			headerName: "Set-Cookie",
+			want:       []string{"a=b, c=d", "e=f"},
+		},
+		{
+			name:       "empty value",
+			headerName: "Empty",
+			want:       []string{""},
+		},
+		{
+			name:       "no value",
+			headerName: "Not Found",
+		},
+	}
+
+	h.t.Run("GetResponseHeaderValues", func(t *testing.T) {
+		for _, tc := range tests {
+			values := h.h.GetResponseHeaderValues(ctx, tc.headerName)
+
+			if want, have := tc.want, values; !reflect.DeepEqual(want, have) {
+				t.Errorf("%s: unexpected header values, want: %v, have: %v", tc.name, want, have)
+			}
+		}
+	})
+}
+
+func (h *hostTester) testSetResponseHeaderValue() {
+	ctx, _ := h.newCtx(0) // no features required
+	h.addTestResponseHeaders(ctx)
+
+	tests := []struct {
+		name       string
+		headerName string
+		want       string
+	}{
+		{
+			name:       "non-existing",
+			headerName: "custom",
+			want:       "1",
+		},
+		{
+			name:       "existing",
+			headerName: "Content-Type",
+			want:       "application/json",
+		},
+		{
+			name:       "existing lowercase",
+			headerName: "content-type",
+			want:       "application/json",
+		},
+		{
+			name:       "set to empty",
+			headerName: "Custom",
+		},
+		{
+			name:       "multi-field",
+			headerName: "Set-Cookie",
+			want:       "proxy2",
+		},
+		{
+			name:       "set multi-field to empty",
+			headerName: "Set-Cookie",
+			want:       "",
+		},
+	}
+
+	h.t.Run("SetResponseHeaderValue", func(t *testing.T) {
+		for _, tc := range tests {
+			h.h.SetResponseHeaderValue(ctx, tc.headerName, tc.want)
+
+			if want, have := tc.want, strings.Join(h.h.GetResponseHeaderValues(ctx, tc.headerName), "|"); want != have {
+				t.Errorf("%s: unexpected header, want: %v, have: %v", tc.name, want, have)
+			}
+		}
+	})
+}
+
+func (h *hostTester) testAddResponseHeaderValue() {
+	tests := []struct {
+		name       string
+		headerName string
+		value      string
+		want       []string
+	}{
+		{
+			name:       "non-existing",
+			headerName: "new",
+			value:      "1",
+			want:       []string{"1"},
+		},
+		{
+			name:       "empty",
+			headerName: "new",
+			want:       []string{""},
+		},
+		{
+			name:       "existing",
+			headerName: "Set-Cookie",
+			value:      "g=h",
+			want:       []string{"a=b, c=d", "e=f", "g=h"},
+		},
+		{
+			name:       "lowercase",
+			headerName: "set-Cookie",
+			value:      "g=h",
+			want:       []string{"a=b, c=d", "e=f", "g=h"},
+		},
+		{
+			name:       "existing empty",
+			headerName: "Set-Cookie",
+			value:      "",
+			want:       []string{"a=b, c=d", "e=f", ""},
+		},
+	}
+
+	h.t.Run("AddResponseHeaderValue", func(t *testing.T) {
+		for _, tc := range tests {
+			ctx, _ := h.newCtx(0) // no features required
+			h.addTestResponseHeaders(ctx)
+
+			h.h.AddResponseHeaderValue(ctx, tc.headerName, tc.value)
+
+			if want, have := tc.want, h.h.GetResponseHeaderValues(ctx, tc.headerName); !reflect.DeepEqual(want, have) {
+				t.Errorf("%s: unexpected header, want: %v, have: %v", tc.name, want, have)
+			}
+		}
+	})
+}
+
+func (h *hostTester) testRemoveResponseHeaderValue() {
+	ctx, _ := h.newCtx(0) // no features required
+	h.addTestResponseHeaders(ctx)
+
+	tests := []struct {
+		name       string
+		headerName string
+	}{
+		{
+			name:       "doesn't exist",
+			headerName: "new",
+		},
+		{
+			name:       "empty",
+			headerName: "Empty",
+		},
+		{
+			name:       "exists",
+			headerName: "Custom",
+		},
+		{
+			name:       "lowercase",
+			headerName: "custom",
+		},
+		{
+			name:       "multi-field",
+			headerName: "Set-Cookie",
+		},
+	}
+
+	h.t.Run("RemoveResponseHeader", func(t *testing.T) {
+		for _, tc := range tests {
+			h.h.RemoveResponseHeader(ctx, tc.headerName)
+
+			if have := h.h.GetResponseHeaderValues(ctx, tc.headerName); len(have) > 0 {
+				t.Errorf("%s: unexpected headers: %v", tc.name, have)
+			}
 		}
 	})
 }
