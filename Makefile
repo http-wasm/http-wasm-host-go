@@ -1,3 +1,4 @@
+gofumpt := mvdan.cc/gofumpt@v0.4.0
 goimports := golang.org/x/tools/cmd/goimports@v0.2.0
 golangci_lint := github.com/golangci/golangci-lint/cmd/golangci-lint@v1.50.1
 
@@ -31,12 +32,8 @@ lint: $(golangci_lint_path)
 
 .PHONY: format
 format:
-	@find . -type f -name '*.go' | xargs gofmt -s -w
-	@for f in `find . -name '*.go'`; do \
-	    awk '/^import \($$/,/^\)$$/{if($$0=="")next}{print}' $$f > /tmp/fmt; \
-	    mv /tmp/fmt $$f; \
-	done
-	@go run $(goimports) -w -local github.com/http-wasm/http-wasm-host-go `find . -name '*.go'`
+	@go run $(gofumpt) -l -w .
+	@go run $(goimports) -local github.com/http-wasm/ -w $(shell find . -name '*.go' -type f)
 
 .PHONY: check
 check:
