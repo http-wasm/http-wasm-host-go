@@ -13,12 +13,25 @@ import (
 // TestHost tests a handler.Host by checking default property values and
 // ability to change them.
 //
-// To use this, pass your host and the want protocol version.
+// To use this, pass your host and the context which allows access to the
+// request and response objects. This should be configured for "HTTP/1.1".
 //
-//	if err := handlertest.TestHost(myHost, "HTTP/1.1"); err != nil {
+// Here's an example of a net/http host which supports no features:
+//
+//	newCtx := func(features handler.Features) (context.Context, handler.Features) {
+//		if features != 0 {
+//			return testCtx, 0 // unsupported
+//		}
+//
+//		r, _ := http.NewRequest("GET", "", nil)
+//		w := &httptest.ResponseRecorder{HeaderMap: map[string][]string{}}
+//		return context.WithValue(testCtx, requestStateKey{}, &requestState{r: r, w: w}), features
+//	}
+//
+//	if err := handlertest.TestHost(host{}, newCtx); err != nil {
 //		t.Fatal(err)
 //	}
-func TestHost(h handler.Host, newCtx func() context.Context) error {
+func TestHost(h handler.Host, newCtx func(handler.Features) (context.Context, handler.Features)) error {
 	t := hostTester{h: h, newCtx: newCtx}
 
 	t.checkMethod()
@@ -41,7 +54,7 @@ func TestHost(h handler.Host, newCtx func() context.Context) error {
 // A hostTester holds state for running the test.
 type hostTester struct {
 	h       handler.Host
-	newCtx  func() context.Context
+	newCtx  func(handler.Features) (context.Context, handler.Features)
 	errText []byte
 }
 
@@ -54,7 +67,7 @@ func (t *hostTester) errorf(format string, args ...any) {
 }
 
 func (t *hostTester) checkMethod() {
-	ctx := t.newCtx()
+	ctx, _ := t.newCtx(0) // no features required
 
 	// Check default
 	if want, have := "GET", t.h.GetMethod(ctx); want != have {
@@ -71,7 +84,7 @@ func (t *hostTester) checkMethod() {
 }
 
 func (t *hostTester) checkURI() {
-	ctx := t.newCtx()
+	ctx, _ := t.newCtx(0) // no features required
 
 	if want, have := "/", t.h.GetURI(ctx); want != have {
 		t.errorf("GetURI: unexpected default, want: %v, have: %v", want, have)
@@ -117,7 +130,7 @@ func (t *hostTester) checkURI() {
 }
 
 func (t *hostTester) checkProtocolVersion() {
-	ctx := t.newCtx()
+	ctx, _ := t.newCtx(0) // no features required
 
 	if want, have := "HTTP/1.1", t.h.GetProtocolVersion(ctx); want != have {
 		t.errorf("GetProtocolVersion: unexpected, want: %v, have: %v", want, have)
@@ -125,7 +138,7 @@ func (t *hostTester) checkProtocolVersion() {
 }
 
 func (t *hostTester) checkRequestHeaders() {
-	ctx := t.newCtx()
+	ctx, _ := t.newCtx(0) // no features required
 
 	if t.h.GetRequestHeaderNames(ctx) != nil {
 		t.errorf("GetRequestHeaderNames: unexpected default, want: nil")
@@ -133,7 +146,11 @@ func (t *hostTester) checkRequestHeaders() {
 }
 
 func (t *hostTester) checkRequestBody() {
-	ctx := t.newCtx()
+	// All body tests require read-back
+	ctx, enabled := t.newCtx(handler.FeatureBufferRequest)
+	if !enabled.IsEnabled(handler.FeatureBufferRequest) {
+		return
+	}
 
 	if t.h.RequestBodyReader(ctx) == nil {
 		t.errorf("RequestBodyReader: unexpected default, want: != nil")
@@ -141,7 +158,10 @@ func (t *hostTester) checkRequestBody() {
 }
 
 func (t *hostTester) checkRequestTrailers() {
-	ctx := t.newCtx()
+	ctx, enabled := t.newCtx(handler.FeatureTrailers)
+	if !enabled.IsEnabled(handler.FeatureTrailers) {
+		return
+	}
 
 	if t.h.GetRequestTrailerNames(ctx) != nil {
 		t.errorf("GetRequestTrailerNames: unexpected default, want: nil")
@@ -149,7 +169,12 @@ func (t *hostTester) checkRequestTrailers() {
 }
 
 func (t *hostTester) checkStatusCode() {
-	ctx := t.newCtx()
+	// We can't check setting a response property without reading it back.
+	// Read-back of any response property requires buffering.
+	ctx, enabled := t.newCtx(handler.FeatureBufferResponse)
+	if !enabled.IsEnabled(handler.FeatureBufferResponse) {
+		return
+	}
 
 	if want, have := uint32(200), t.h.GetStatusCode(ctx); want != have {
 		t.errorf("GetStatusCode: unexpected default, want: %v, have: %v", want, have)
@@ -157,7 +182,12 @@ func (t *hostTester) checkStatusCode() {
 }
 
 func (t *hostTester) checkResponseHeaders() {
-	ctx := t.newCtx()
+	// We can't check setting a response property without reading it back.
+	// Read-back of any response property requires buffering.
+	ctx, enabled := t.newCtx(handler.FeatureBufferResponse)
+	if !enabled.IsEnabled(handler.FeatureBufferResponse) {
+		return
+	}
 
 	if t.h.GetResponseHeaderNames(ctx) != nil {
 		t.errorf("GetResponseHeaderNames: unexpected default, want: nil")
@@ -165,7 +195,12 @@ func (t *hostTester) checkResponseHeaders() {
 }
 
 func (t *hostTester) checkResponseBody() {
-	ctx := t.newCtx()
+	// We can't check setting a response property without reading it back.
+	// Read-back of any response property requires buffering.
+	ctx, enabled := t.newCtx(handler.FeatureBufferResponse)
+	if !enabled.IsEnabled(handler.FeatureBufferResponse) {
+		return
+	}
 
 	if t.h.ResponseBodyReader(ctx) == nil {
 		t.errorf("ResponseBodyReader: unexpected default, want: != nil")
@@ -173,7 +208,14 @@ func (t *hostTester) checkResponseBody() {
 }
 
 func (t *hostTester) checkResponseTrailers() {
-	ctx := t.newCtx()
+	// We can't check setting a response property without reading it back.
+	// Read-back of any response property requires buffering, and trailers
+	// requires an additional feature
+	requiredFeatures := handler.FeatureTrailers | handler.FeatureBufferResponse
+	ctx, enabled := t.newCtx(requiredFeatures)
+	if !enabled.IsEnabled(requiredFeatures) {
+		return
+	}
 
 	if t.h.GetResponseTrailerNames(ctx) != nil {
 		t.errorf("GetResponseTrailerNames: unexpected default, want: nil")

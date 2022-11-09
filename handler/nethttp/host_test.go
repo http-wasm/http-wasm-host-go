@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/http-wasm/http-wasm-host-go/api/handler"
 	"github.com/http-wasm/http-wasm-host-go/internal/test"
 	"github.com/http-wasm/http-wasm-host-go/testing/handlertest"
 )
@@ -18,13 +19,14 @@ import (
 var testCtx = context.Background()
 
 func Test_host(t *testing.T) {
-	newCtx := func() context.Context {
+	newCtx := func(features handler.Features) (context.Context, handler.Features) {
+		// The below configuration supports all features.
 		r, err := http.NewRequest("GET", "", bytes.NewReader(nil))
 		if err != nil {
 			t.Fatal(err)
 		}
 		w := &bufferingResponseWriter{delegate: &httptest.ResponseRecorder{HeaderMap: map[string][]string{}}}
-		return context.WithValue(testCtx, requestStateKey{}, &requestState{r: r, w: w})
+		return context.WithValue(testCtx, requestStateKey{}, &requestState{r: r, w: w}), features
 	}
 
 	if err := handlertest.TestHost(host{}, newCtx); err != nil {
