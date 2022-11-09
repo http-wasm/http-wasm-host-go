@@ -1,5 +1,5 @@
 gofumpt := mvdan.cc/gofumpt@v0.4.0
-goimports := golang.org/x/tools/cmd/goimports@v0.2.0
+gosimports := github.com/rinchsan/gosimports/cmd/gosimports@v0.3.4
 golangci_lint := github.com/golangci/golangci-lint/cmd/golangci-lint@v1.50.1
 
 .PHONY: testdata
@@ -33,7 +33,7 @@ lint: $(golangci_lint_path)
 .PHONY: format
 format:
 	@go run $(gofumpt) -l -w .
-	@go run $(goimports) -local github.com/http-wasm/ -w $(shell find . -name '*.go' -type f)
+	@go run $(gosimports) -local github.com/http-wasm/ -w $(shell find . -name '*.go' -type f)
 
 .PHONY: check
 check:
