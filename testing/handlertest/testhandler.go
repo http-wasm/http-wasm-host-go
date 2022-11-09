@@ -1,16 +1,21 @@
 // Package handlertest implements support for testing implementations
-// of HTTP handlers. This is inspired by fstest.TestFS.
+// of HTTP handlers.
+//
+// This is inspired by fstest.TestFS, but implemented differently, notably
+// using a testing.T parameter for better reporting.
 package handlertest
 
 import (
 	"context"
 	"errors"
-	"fmt"
+	"reflect"
+	"sort"
+	"testing"
 
 	"github.com/http-wasm/http-wasm-host-go/api/handler"
 )
 
-// TestHost tests a handler.Host by checking default property values and
+// HostTest tests a handler.Host by testing default property values and
 // ability to change them.
 //
 // To use this, pass your host and the context which allows access to the
@@ -28,67 +33,65 @@ import (
 //		return context.WithValue(testCtx, requestStateKey{}, &requestState{r: r, w: w}), features
 //	}
 //
-//	if err := handlertest.TestHost(host{}, newCtx); err != nil {
-//		t.Fatal(err)
-//	}
-func TestHost(h handler.Host, newCtx func(handler.Features) (context.Context, handler.Features)) error {
-	t := hostTester{h: h, newCtx: newCtx}
+//	// Run all the tests
+//	handlertest.HostTest(t, host{}, newCtx)
+func HostTest(t *testing.T, h handler.Host, newCtx func(handler.Features) (context.Context, handler.Features)) error {
+	ht := hostTester{t: t, h: h, newCtx: newCtx}
 
-	t.checkMethod()
-	t.checkURI()
-	t.checkProtocolVersion()
-	t.checkRequestHeaders()
-	t.checkRequestBody()
-	t.checkRequestTrailers()
-	t.checkStatusCode()
-	t.checkResponseHeaders()
-	t.checkResponseBody()
-	t.checkResponseTrailers()
+	ht.testMethod()
+	ht.testURI()
+	ht.testProtocolVersion()
+	ht.testRequestHeaders()
+	ht.testRequestBody()
+	ht.testRequestTrailers()
+	ht.testStatusCode()
+	ht.testResponseHeaders()
+	ht.testResponseBody()
+	ht.testResponseTrailers()
 
-	if len(t.errText) == 0 {
+	if len(ht.errText) == 0 {
 		return nil
 	}
-	return errors.New("TestHost found errors:\n" + string(t.errText))
+	return errors.New("TestHost found errors:\n" + string(ht.errText))
 }
 
 // A hostTester holds state for running the test.
 type hostTester struct {
+	t       *testing.T
 	h       handler.Host
 	newCtx  func(handler.Features) (context.Context, handler.Features)
 	errText []byte
 }
 
-// errorf adds an error line to errText.
-func (t *hostTester) errorf(format string, args ...any) {
-	if len(t.errText) > 0 {
-		t.errText = append(t.errText, '\n')
-	}
-	t.errText = append(t.errText, fmt.Sprintf(format, args...)...)
-}
+func (h *hostTester) testMethod() {
+	ctx, _ := h.newCtx(0) // no features required
 
-func (t *hostTester) checkMethod() {
-	ctx, _ := t.newCtx(0) // no features required
-
-	// Check default
-	if want, have := "GET", t.h.GetMethod(ctx); want != have {
-		t.errorf("GetMethod: unexpected default, want: %v, have: %v", want, have)
-	}
-
-	for _, want := range []string{"POST", "OPTIONS"} {
-		t.h.SetMethod(ctx, want)
-
-		if have := t.h.GetMethod(ctx); want != have {
-			t.errorf("Set/GetMethod: unexpected, set: %v, have: %v", want, have)
+	h.t.Run("GetMethod default", func(t *testing.T) {
+		// Check default
+		if want, have := "GET", h.h.GetMethod(ctx); want != have {
+			t.Errorf("unexpected default method, want: %v, have: %v", want, have)
 		}
-	}
+	})
+
+	h.t.Run("SetMethod", func(t *testing.T) {
+		for _, want := range []string{"POST", "OPTIONS"} {
+			h.h.SetMethod(ctx, want)
+
+			if have := h.h.GetMethod(ctx); want != have {
+				t.Errorf("unexpected method, set: %v, have: %v", want, have)
+			}
+		}
+	})
 }
 
-func (t *hostTester) checkURI() {
-	ctx, _ := t.newCtx(0) // no features required
+func (h *hostTester) testURI() {
+	ctx, _ := h.newCtx(0) // no features required
 
-	if want, have := "/", t.h.GetURI(ctx); want != have {
-		t.errorf("GetURI: unexpected default, want: %v, have: %v", want, have)
-	}
+	h.t.Run("GetURI default", func(t *testing.T) {
+		if want, have := "/", h.h.GetURI(ctx); want != have {
+			t.Errorf("unexpected default URI, want: %v, have: %v", want, have)
+		}
+	})
 
 	tests := []struct {
 		name string
@@ -120,104 +123,176 @@ func (t *hostTester) checkURI() {
 		},
 	}
 
-	for _, tt := range tests {
-		t.h.SetURI(ctx, tt.set)
+	h.t.Run("SetURI", func(t *testing.T) {
+		for _, tt := range tests {
 
-		if have := t.h.GetURI(ctx); tt.want != have {
-			t.errorf("Set/GetURI: unexpected, set: %v, want: %v, have: %v", tt.set, tt.want, have)
+			h.h.SetURI(ctx, tt.set)
+
+			if have := h.h.GetURI(ctx); tt.want != have {
+				t.Errorf("unexpected URI, set: %v, want: %v, have: %v", tt.set, tt.want, have)
+			}
 		}
-	}
+	})
 }
 
-func (t *hostTester) checkProtocolVersion() {
-	ctx, _ := t.newCtx(0) // no features required
+func (h *hostTester) testProtocolVersion() {
+	ctx, _ := h.newCtx(0) // no features required
 
-	if want, have := "HTTP/1.1", t.h.GetProtocolVersion(ctx); want != have {
-		t.errorf("GetProtocolVersion: unexpected, want: %v, have: %v", want, have)
-	}
+	h.t.Run("GetProtocolVersion default", func(t *testing.T) {
+		if want, have := "HTTP/1.1", h.h.GetProtocolVersion(ctx); want != have {
+			t.Errorf("unexpected protocol version, want: %v, have: %v", want, have)
+		}
+	})
 }
 
-func (t *hostTester) checkRequestHeaders() {
-	ctx, _ := t.newCtx(0) // no features required
-
-	if t.h.GetRequestHeaderNames(ctx) != nil {
-		t.errorf("GetRequestHeaderNames: unexpected default, want: nil")
-	}
+func (h *hostTester) testRequestHeaders() {
+	h.testRequestHeaderNames()
 }
 
-func (t *hostTester) checkRequestBody() {
+func (h *hostTester) testRequestHeaderNames() {
+	ctx, _ := h.newCtx(0) // no features required
+
+	h.t.Run("GetRequestHeaderNames default", func(t *testing.T) {
+		if h.h.GetRequestHeaderNames(ctx) != nil {
+			t.Errorf("unexpected default request header names, want: nil")
+		}
+	})
+
+	h.t.Run("GetRequestHeaderNames", func(t *testing.T) {
+		var want []string
+		for k, vs := range testRequestHeaders {
+			h.h.SetRequestHeaderValue(ctx, k, vs[0])
+			want = append(want, k)
+		}
+		sort.Strings(want)
+
+		have := h.h.GetRequestHeaderNames(ctx)
+		sort.Strings(have)
+		if !reflect.DeepEqual(want, have) {
+			t.Errorf("unexpected header names, want: %v, have: %v", want, have)
+		}
+	})
+}
+
+func (h *hostTester) testRequestBody() {
 	// All body tests require read-back
-	ctx, enabled := t.newCtx(handler.FeatureBufferRequest)
+	ctx, enabled := h.newCtx(handler.FeatureBufferRequest)
 	if !enabled.IsEnabled(handler.FeatureBufferRequest) {
 		return
 	}
 
-	if t.h.RequestBodyReader(ctx) == nil {
-		t.errorf("RequestBodyReader: unexpected default, want: != nil")
-	}
+	h.t.Run("RequestBodyReader default", func(t *testing.T) {
+		if h.h.RequestBodyReader(ctx) == nil {
+			t.Errorf("unexpected default body reader, want: != nil")
+		}
+	})
 }
 
-func (t *hostTester) checkRequestTrailers() {
-	ctx, enabled := t.newCtx(handler.FeatureTrailers)
+func (h *hostTester) testRequestTrailers() {
+	ctx, enabled := h.newCtx(handler.FeatureTrailers)
 	if !enabled.IsEnabled(handler.FeatureTrailers) {
 		return
 	}
 
-	if t.h.GetRequestTrailerNames(ctx) != nil {
-		t.errorf("GetRequestTrailerNames: unexpected default, want: nil")
-	}
+	h.t.Run("GetRequestTrailerNames default", func(t *testing.T) {
+		if h.h.GetRequestTrailerNames(ctx) != nil {
+			t.Errorf("unexpected default trailer names, want: nil")
+		}
+	})
 }
 
-func (t *hostTester) checkStatusCode() {
-	// We can't check setting a response property without reading it back.
+func (h *hostTester) testStatusCode() {
+	// We can't test setting a response property without reading it back.
 	// Read-back of any response property requires buffering.
-	ctx, enabled := t.newCtx(handler.FeatureBufferResponse)
+	ctx, enabled := h.newCtx(handler.FeatureBufferResponse)
 	if !enabled.IsEnabled(handler.FeatureBufferResponse) {
 		return
 	}
 
-	if want, have := uint32(200), t.h.GetStatusCode(ctx); want != have {
-		t.errorf("GetStatusCode: unexpected default, want: %v, have: %v", want, have)
-	}
+	h.t.Run("GetStatusCode default", func(t *testing.T) {
+		if want, have := uint32(200), h.h.GetStatusCode(ctx); want != have {
+			t.Errorf("unexpected default status code, want: %v, have: %v", want, have)
+		}
+	})
 }
 
-func (t *hostTester) checkResponseHeaders() {
-	// We can't check setting a response property without reading it back.
+func (h *hostTester) testResponseHeaders() {
+	h.testResponseHeaderNames()
+}
+
+func (h *hostTester) testResponseHeaderNames() {
+	ctx, _ := h.newCtx(0) // no features required
+
+	h.t.Run("GetResponseHeaderNames default", func(t *testing.T) {
+		if h.h.GetResponseHeaderNames(ctx) != nil {
+			t.Errorf("unexpected default response header names, want: nil")
+		}
+	})
+
+	h.t.Run("GetResponseHeaderNames", func(t *testing.T) {
+		var want []string
+		for k, vs := range testResponseHeaders {
+			h.h.SetResponseHeaderValue(ctx, k, vs[0])
+			want = append(want, k)
+		}
+		sort.Strings(want)
+
+		have := h.h.GetResponseHeaderNames(ctx)
+		sort.Strings(have)
+		if !reflect.DeepEqual(want, have) {
+			t.Errorf("unexpected header names, want: %v, have: %v", want, have)
+		}
+	})
+}
+
+func (h *hostTester) testResponseBody() {
+	// We can't test setting a response property without reading it back.
 	// Read-back of any response property requires buffering.
-	ctx, enabled := t.newCtx(handler.FeatureBufferResponse)
+	ctx, enabled := h.newCtx(handler.FeatureBufferResponse)
 	if !enabled.IsEnabled(handler.FeatureBufferResponse) {
 		return
 	}
 
-	if t.h.GetResponseHeaderNames(ctx) != nil {
-		t.errorf("GetResponseHeaderNames: unexpected default, want: nil")
-	}
+	h.t.Run("ResponseBodyReader default", func(t *testing.T) {
+		if h.h.ResponseBodyReader(ctx) == nil {
+			t.Errorf("unexpected default body reader, want: != nil")
+		}
+	})
 }
 
-func (t *hostTester) checkResponseBody() {
-	// We can't check setting a response property without reading it back.
-	// Read-back of any response property requires buffering.
-	ctx, enabled := t.newCtx(handler.FeatureBufferResponse)
-	if !enabled.IsEnabled(handler.FeatureBufferResponse) {
-		return
-	}
-
-	if t.h.ResponseBodyReader(ctx) == nil {
-		t.errorf("ResponseBodyReader: unexpected default, want: != nil")
-	}
-}
-
-func (t *hostTester) checkResponseTrailers() {
-	// We can't check setting a response property without reading it back.
+func (h *hostTester) testResponseTrailers() {
+	// We can't test setting a response property without reading it back.
 	// Read-back of any response property requires buffering, and trailers
 	// requires an additional feature
 	requiredFeatures := handler.FeatureTrailers | handler.FeatureBufferResponse
-	ctx, enabled := t.newCtx(requiredFeatures)
+	ctx, enabled := h.newCtx(requiredFeatures)
 	if !enabled.IsEnabled(requiredFeatures) {
 		return
 	}
 
-	if t.h.GetResponseTrailerNames(ctx) != nil {
-		t.errorf("GetResponseTrailerNames: unexpected default, want: nil")
-	}
+	h.t.Run("GetResponseTrailerNames default", func(t *testing.T) {
+		if h.h.GetResponseTrailerNames(ctx) != nil {
+			t.Errorf("unexpected default trailer names, want: nil")
+		}
+	})
 }
+
+// Note: senders are supposed to concatenate multiple fields with the same
+// name on comma, except the response header Set-Cookie. That said, a lot
+// of middleware don't know about this and may repeat other headers anyway.
+// See https://www.rfc-editoreqHeaders.org/rfc/rfc9110#section-5.2
+
+var (
+	testRequestHeaders = map[string][]string{
+		"Content-Type":    {"text/plain"},
+		"Custom":          {"1"},
+		"X-Forwarded-For": {"client, proxy1", "proxy2"},
+		"Empty":           {""},
+	}
+	testResponseHeaders = map[string][]string{
+		"Content-Type": {"text/plain"},
+		"Custom":       {"1"},
+		"Set-Cookie":   {"a=b, c=d", "e=f"},
+		"Empty":        {""},
+	}
+)

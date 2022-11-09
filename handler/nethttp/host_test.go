@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"reflect"
-	"sort"
 	"strings"
 	"testing"
 
@@ -29,7 +28,7 @@ func Test_host(t *testing.T) {
 		return context.WithValue(testCtx, requestStateKey{}, &requestState{r: r, w: w}), features
 	}
 
-	if err := handlertest.TestHost(host{}, newCtx); err != nil {
+	if err := handlertest.HostTest(t, host{}, newCtx); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -49,22 +48,6 @@ func Test_host_GetProtocolVersion(t *testing.T) {
 				t.Errorf("unexpected protocolVersion, want: %v, have: %v", want, have)
 			}
 		})
-	}
-}
-
-func Test_host_GetRequestHeaderNames(t *testing.T) {
-	ctx, _ := newTestRequestContext()
-
-	var want []string
-	for k := range test.RequestHeaders {
-		want = append(want, k)
-	}
-	sort.Strings(want)
-
-	have := host{}.GetRequestHeaderNames(ctx)
-	sort.Strings(have)
-	if !reflect.DeepEqual(want, have) {
-		t.Errorf("unexpected header names, want: %v, have: %v", want, have)
 	}
 }
 
@@ -249,22 +232,6 @@ func Test_host_RemoveRequestHeaderValue(t *testing.T) {
 				t.Errorf("unexpected headers: %v", have)
 			}
 		})
-	}
-}
-
-func Test_host_GetResponseHeaderNames(t *testing.T) {
-	ctx, _ := newTestResponseContext()
-
-	var want []string
-	for k := range test.ResponseHeaders {
-		want = append(want, k)
-	}
-	sort.Strings(want)
-
-	have := host{}.GetResponseHeaderNames(ctx)
-	sort.Strings(have)
-	if !reflect.DeepEqual(want, have) {
-		t.Errorf("unexpected header names, want: %v, have: %v", want, have)
 	}
 }
 
