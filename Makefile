@@ -48,3 +48,7 @@ check:
 .PHONY: clean
 clean: ## Ensure a clean build
 	@go clean -testcache
+
+.PHONY: tck
+tck:
+	@cd tck/guest && tinygo build -o ../tck.wasm -scheduler=none --no-debug -target=wasi .

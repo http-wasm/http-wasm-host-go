@@ -74,3 +74,32 @@ jobs:
 
       - name: "Test"
         run: make test
+
+  # TinyGo is not idempotent when generating wasm, so we don't check
+  # in %.wasm as a part of this job. If an updated binary wasn't checked
+  # in, the test job will fail, so here we just want to make sure the TCK
+  # does not have any build failures.
+  build-tck:
+    runs-on: ubuntu-20.04
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@v3
+
+      - name: "Set up Go"
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.19
+          cache: true
+
+      - name: "Set up TinyGo"
+        uses: acifani/setup-tinygo@v1
+        with:
+          tinygo-version: 0.26.0
+
+      - name: "Cache TinyGo build"
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/tinygo
+
+      - name: "Build TCK"
+        run: make tck
