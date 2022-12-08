@@ -371,6 +371,9 @@ func (m *middleware) getHeaderNames(ctx context.Context, mod wazeroapi.Module, s
 		panic("unsupported header kind: " + strconv.Itoa(int(kind)))
 	}
 
+	// TODO: This will allocate new strings all the time. It could be optimized
+	// by having writeNULTerminated directly lowercase while writing instead for
+	// this code path.
 	for i := range names {
 		names[i] = strings.ToLower(names[i])
 	}
