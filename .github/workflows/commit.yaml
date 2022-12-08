@@ -100,6 +100,7 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ~/.cache/tinygo
+          key: tinygo-0.26.0
 
       - name: "Build TCK"
         run: make tck
