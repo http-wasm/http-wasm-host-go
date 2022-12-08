@@ -158,9 +158,6 @@ func (h *handler) testGetRequestHeaderNames(req api.Request, resp api.Response, 
 	for _, name := range expectedNames {
 		found := false
 		for _, haveName := range have {
-			// TODO(anuraaga): Currently we have gaps between Go and NodeJS hosts for the casing of header keys.
-			// Temporarily allow this test to support it but we should consider having a case expectation in the ABI.
-			haveName = strings.ToLower(haveName)
 			if name == haveName {
 				found = true
 				break
