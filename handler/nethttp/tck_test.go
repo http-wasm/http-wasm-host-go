@@ -1,17 +1,16 @@
-package tck_test
+package wasm
 
 import (
 	"context"
 	"net/http/httptest"
 	"testing"
 
-	wasm "github.com/http-wasm/http-wasm-host-go/handler/nethttp"
 	"github.com/http-wasm/http-wasm-host-go/tck"
 )
 
 func TestTCK(t *testing.T) {
 	// Initialize the TCK guest wasm module.
-	mw, err := wasm.NewMiddleware(context.Background(), tck.GuestWASM)
+	mw, err := NewMiddleware(context.Background(), tck.GuestWASM)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -35,9 +35,9 @@ graph LR;
 We provide an implementation of the backend handler using the Go http.Handler
 interface, [tck.BackendHandler][2].
 
-If the Go host uses http.Handler or types that can be easily coerced to it, it
-can be simplest to initialize this handler directly as the backend being
-wrapped by the middleware.
+If the Go host uses [http.Handler][7] or types that can be easily coerced to
+it, it can be simplest to initialize this handler directly as the backend
+being wrapped by the middleware.
 
 It is also possible to use [tck.StartBackend][3]
 to start an HTTP server using this backend handler. This is often the easiest
@@ -59,4 +59,5 @@ in this repository.
 [3]: https://pkg.go.dev/github.com/http-wasm/http-wasm-host-go/tck#StartBackend
 [4]: https://pkg.go.dev/github.com/http-wasm/http-wasm-host-go/tck#GuestWASM
 [5]: https://pkg.go.dev/github.com/http-wasm/http-wasm-host-go/tck#Run
-[6]: ./run_test.go
+[6]: ../handler/nethttp/tck_test.go
+[7]: https://pkg.go.dev/net/http#Handler

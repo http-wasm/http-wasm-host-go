@@ -49,6 +49,7 @@ check:
 clean: ## Ensure a clean build
 	@go clean -testcache
 
+# note: the guest wasm is stored in tck/, not tck/guest, so that go:embed can read it.
 .PHONY: tck
 tck:
 	@cd tck/guest && tinygo build -o ../tck.wasm -scheduler=none --no-debug -target=wasi .
