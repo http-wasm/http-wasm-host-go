@@ -146,21 +146,21 @@ func Example_wasi() {
 
 	// Output:
 	// POST / HTTP/1.1
-	// Accept-Encoding: gzip
-	// Content-Length: 18
-	// Content-Type: application/json
-	// Host: localhost
-	// User-Agent: Go-http-client/1.1
+	// accept-encoding: gzip
+	// content-length: 18
+	// content-type: application/json
+	// host: localhost
+	// user-agent: Go-http-client/1.1
 	//
 	// {"hello": "panda"}
 	//
 	// HTTP/1.1 200
-	// Content-Type: application/json
-	// Date: Tue, 15 Nov 1994 08:12:31 GMT
-	// Set-Cookie: a=b
-	// Set-Cookie: c=d
-	// Trailer: grpc-status
-	// Transfer-Encoding: chunked
+	// content-type: application/json
+	// date: Tue, 15 Nov 1994 08:12:31 GMT
+	// set-cookie: a=b
+	// set-cookie: c=d
+	// trailer: grpc-status
+	// transfer-encoding: chunked
 	//
 	// {"hello": "world"}
 	// grpc-status: 1
