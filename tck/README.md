@@ -11,8 +11,8 @@ endpoint matches expectations for that binary.
 ## Running the TCK
 
 The TCK is implemented using Go's standard testing framework, so it can be
-loaded as a package for Go hosts. A TCK standalone runner will be provided in
-the future for Non-Go hosts, or Go hosts that would like to run the TCK outside
+loaded as a package for Go hosts. A TCK [standalone runner][8] is also provided
+for use with Non-Go hosts, or Go hosts that would like to run the TCK outside
 the standard testing framework.
 
 The basic steps for running the TCK are
@@ -61,3 +61,4 @@ in this repository.
 [5]: https://pkg.go.dev/github.com/http-wasm/http-wasm-host-go/tck#Run
 [6]: ../handler/nethttp/tck_test.go
 [7]: https://pkg.go.dev/net/http#Handler
+[8]: https://github.com/http-wasm/http-wasm-tck
