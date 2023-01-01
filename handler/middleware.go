@@ -251,11 +251,11 @@ func (m *middleware) enableFeatures(ctx context.Context, stack []uint64) {
 }
 
 // getConfig implements the WebAssembly host function handler.FuncGetConfig.
-func (m *middleware) getConfig(ctx context.Context, mod wazeroapi.Module, stack []uint64) {
+func (m *middleware) getConfig(_ context.Context, mod wazeroapi.Module, stack []uint64) {
 	buf := uint32(stack[0])
 	bufLimit := handler.BufLimit(stack[1])
 
-	configLen := writeIfUnderLimit(ctx, mod, buf, bufLimit, m.guestConfig)
+	configLen := writeIfUnderLimit(mod.Memory(), buf, bufLimit, m.guestConfig)
 
 	stack[0] = uint64(configLen)
 }
@@ -281,7 +281,7 @@ func (m *middleware) log(ctx context.Context, mod wazeroapi.Module, params []uin
 	}
 	var msg string
 	if messageLen > 0 {
-		msg = mustReadString(ctx, mod.Memory(), "message", message, messageLen)
+		msg = mustReadString(mod.Memory(), "message", message, messageLen)
 	}
 	m.logger.Log(ctx, level, msg)
 }
@@ -292,7 +292,7 @@ func (m *middleware) getMethod(ctx context.Context, mod wazeroapi.Module, stack 
 	bufLimit := handler.BufLimit(stack[1])
 
 	method := m.host.GetMethod(ctx)
-	methodLen := writeStringIfUnderLimit(ctx, mod, buf, bufLimit, method)
+	methodLen := writeStringIfUnderLimit(mod.Memory(), buf, bufLimit, method)
 
 	stack[0] = uint64(methodLen)
 }
@@ -308,7 +308,7 @@ func (m *middleware) setMethod(ctx context.Context, mod wazeroapi.Module, params
 	if methodLen == 0 {
 		panic("HTTP method cannot be empty")
 	}
-	p = mustReadString(ctx, mod.Memory(), "method", method, methodLen)
+	p = mustReadString(mod.Memory(), "method", method, methodLen)
 	m.host.SetMethod(ctx, p)
 }
 
@@ -318,7 +318,7 @@ func (m *middleware) getURI(ctx context.Context, mod wazeroapi.Module, stack []u
 	bufLimit := handler.BufLimit(stack[1])
 
 	uri := m.host.GetURI(ctx)
-	uriLen := writeStringIfUnderLimit(ctx, mod, buf, bufLimit, uri)
+	uriLen := writeStringIfUnderLimit(mod.Memory(), buf, bufLimit, uri)
 
 	stack[0] = uint64(uriLen)
 }
@@ -330,7 +330,7 @@ func (m *middleware) setURI(ctx context.Context, mod wazeroapi.Module, params []
 
 	var p string
 	if uriLen > 0 { // overwrite with empty is supported
-		p = mustReadString(ctx, mod.Memory(), "uri", uri, uriLen)
+		p = mustReadString(mod.Memory(), "uri", uri, uriLen)
 	}
 	m.host.SetURI(ctx, p)
 }
@@ -345,7 +345,7 @@ func (m *middleware) getProtocolVersion(ctx context.Context, mod wazeroapi.Modul
 	if len(protocolVersion) == 0 {
 		panic("HTTP protocol version cannot be empty")
 	}
-	protocolVersionLen := writeStringIfUnderLimit(ctx, mod, buf, bufLimit, protocolVersion)
+	protocolVersionLen := writeStringIfUnderLimit(mod.Memory(), buf, bufLimit, protocolVersion)
 
 	stack[0] = uint64(protocolVersionLen)
 }
@@ -395,7 +395,7 @@ func (m *middleware) getHeaderValues(ctx context.Context, mod wazeroapi.Module, 
 	if nameLen == 0 {
 		panic("HTTP header name cannot be empty")
 	}
-	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
+	n := mustReadString(mod.Memory(), "name", name, nameLen)
 
 	var values []string
 	switch kind {
@@ -428,8 +428,8 @@ func (m *middleware) setHeaderValue(ctx context.Context, mod wazeroapi.Module, p
 		panic("HTTP header name cannot be empty")
 	}
 	mustHeaderMutable(ctx, "set", kind)
-	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
-	v := mustReadString(ctx, mod.Memory(), "value", value, valueLen)
+	n := mustReadString(mod.Memory(), "name", name, nameLen)
+	v := mustReadString(mod.Memory(), "value", value, valueLen)
 
 	switch kind {
 	case handler.HeaderKindRequest:
@@ -458,8 +458,8 @@ func (m *middleware) addHeaderValue(ctx context.Context, mod wazeroapi.Module, p
 		panic("HTTP header name cannot be empty")
 	}
 	mustHeaderMutable(ctx, "add", kind)
-	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
-	v := mustReadString(ctx, mod.Memory(), "value", value, valueLen)
+	n := mustReadString(mod.Memory(), "name", name, nameLen)
+	v := mustReadString(mod.Memory(), "value", value, valueLen)
 
 	switch kind {
 	case handler.HeaderKindRequest:
@@ -486,7 +486,7 @@ func (m *middleware) removeHeader(ctx context.Context, mod wazeroapi.Module, par
 		panic("HTTP header name cannot be empty")
 	}
 	mustHeaderMutable(ctx, "remove", kind)
-	n := mustReadString(ctx, mod.Memory(), "name", name, nameLen)
+	n := mustReadString(mod.Memory(), "name", name, nameLen)
 
 	switch kind {
 	case handler.HeaderKindRequest:
@@ -570,7 +570,7 @@ func writeBody(ctx context.Context, mod wazeroapi.Module, buf, bufLen uint32, w 
 	// buf_len 0 means to overwrite with nothing
 	var b []byte
 	if bufLen > 0 {
-		b = mustRead(ctx, mod.Memory(), "body", buf, bufLen)
+		b = mustRead(mod.Memory(), "body", buf, bufLen)
 	}
 	if _, err := w.Write(b); err != nil { // Write errs if it can't write n bytes
 		panic(fmt.Errorf("error writing body: %w", err))
@@ -604,7 +604,7 @@ func readBody(ctx context.Context, mod wazeroapi.Module, buf uint32, bufLimit ha
 	}
 
 	// Allocate a buf to write into directly
-	b := mustRead(ctx, mod.Memory(), "body", buf, bufLimit)
+	b := mustRead(mod.Memory(), "body", buf, bufLimit)
 
 	// Attempt to fill the buffer until an error occurs. Notably, this works
 	// around a full read not returning EOF until the
@@ -725,45 +725,45 @@ func mustHeaderMutable(ctx context.Context, op string, kind handler.HeaderKind) 
 }
 
 // mustReadString is a convenience function that casts mustRead
-func mustReadString(ctx context.Context, mem wazeroapi.Memory, fieldName string, offset, byteCount uint32) string {
+func mustReadString(mem wazeroapi.Memory, fieldName string, offset, byteCount uint32) string {
 	if byteCount == 0 {
 		return ""
 	}
-	return string(mustRead(ctx, mem, fieldName, offset, byteCount))
+	return string(mustRead(mem, fieldName, offset, byteCount))
 }
 
 var emptyBody = make([]byte, 0)
 
 // mustRead is like api.Memory except that it panics if the offset and byteCount are out of range.
-func mustRead(ctx context.Context, mem wazeroapi.Memory, fieldName string, offset, byteCount uint32) []byte {
+func mustRead(mem wazeroapi.Memory, fieldName string, offset, byteCount uint32) []byte {
 	if byteCount == 0 {
 		return emptyBody
 	}
-	buf, ok := mem.Read(ctx, offset, byteCount)
+	buf, ok := mem.Read(offset, byteCount)
 	if !ok {
 		panic(fmt.Errorf("out of memory reading %s", fieldName))
 	}
 	return buf
 }
 
-func writeIfUnderLimit(ctx context.Context, mod wazeroapi.Module, offset, limit handler.BufLimit, v []byte) (vLen uint32) {
+func writeIfUnderLimit(mem wazeroapi.Memory, offset, limit handler.BufLimit, v []byte) (vLen uint32) {
 	vLen = uint32(len(v))
 	if vLen > limit {
 		return // caller can retry with a larger limit
 	} else if vLen == 0 {
 		return // nothing to write
 	}
-	mod.Memory().Write(ctx, offset, v)
+	mem.Write(offset, v)
 	return
 }
 
-func writeStringIfUnderLimit(ctx context.Context, mod wazeroapi.Module, offset, limit handler.BufLimit, v string) (vLen uint32) {
+func writeStringIfUnderLimit(mem wazeroapi.Memory, offset, limit handler.BufLimit, v string) (vLen uint32) {
 	vLen = uint32(len(v))
 	if vLen > limit {
 		return // caller can retry with a larger limit
 	} else if vLen == 0 {
 		return // nothing to write
 	}
-	mod.Memory().WriteString(ctx, offset, v)
+	mem.WriteString(offset, v)
 	return
 }
