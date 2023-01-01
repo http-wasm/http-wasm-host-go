@@ -32,7 +32,7 @@ func writeNULTerminated(
 	}
 
 	// Write the NUL-terminated string to memory directly.
-	s, ok := mem.Read(ctx, buf, byteCount)
+	s, ok := mem.Read(buf, byteCount)
 	if !ok {
 		panic("out of memory") // the guest passed a region outside memory.
 	}
