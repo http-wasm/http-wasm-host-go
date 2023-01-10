@@ -8,9 +8,11 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/tetratelabs/wazero"
 	wazeroapi "github.com/tetratelabs/wazero/api"
+	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 
 	"github.com/http-wasm/http-wasm-host-go/api"
 	"github.com/http-wasm/http-wasm-host-go/api/handler"
@@ -46,12 +48,12 @@ type middleware struct {
 	host                    handler.Host
 	runtime                 wazero.Runtime
 	hostModule, guestModule wazero.CompiledModule
-	newNamespace            NewNamespace
 	moduleConfig            wazero.ModuleConfig
 	guestConfig             []byte
 	logger                  api.Logger
 	pool                    sync.Pool
 	features                handler.Features
+	instanceCounter         uint64
 }
 
 func (m *middleware) Features() handler.Features {
@@ -61,7 +63,6 @@ func (m *middleware) Features() handler.Features {
 func NewMiddleware(ctx context.Context, guest []byte, host handler.Host, opts ...Option) (Middleware, error) {
 	o := &options{
 		newRuntime:   DefaultRuntime,
-		newNamespace: DefaultNamespace,
 		moduleConfig: wazero.NewModuleConfig(),
 		logger:       api.NoopLogger{},
 	}
@@ -77,7 +78,6 @@ func NewMiddleware(ctx context.Context, guest []byte, host handler.Host, opts ..
 	m := &middleware{
 		host:         host,
 		runtime:      wr,
-		newNamespace: o.newNamespace,
 		moduleConfig: o.moduleConfig,
 		guestConfig:  o.guestConfig,
 		logger:       o.logger,
@@ -86,6 +86,17 @@ func NewMiddleware(ctx context.Context, guest []byte, host handler.Host, opts ..
 	if m.hostModule, err = m.compileHost(ctx); err != nil {
 		_ = m.Close(ctx)
 		return nil, err
+	}
+
+	if _, err = wasi_snapshot_preview1.Instantiate(ctx, m.runtime); err != nil {
+		return nil, fmt.Errorf("wasm: error instantiating wasi: %w", err)
+	}
+
+	// Note: host modules don't use configuration
+	_, err = m.runtime.InstantiateModule(ctx, m.hostModule, wazero.NewModuleConfig())
+	if err != nil {
+		_ = m.runtime.Close(ctx)
+		return nil, fmt.Errorf("wasm: error instantiating host: %w", err)
 	}
 
 	if m.guestModule, err = m.compileGuest(ctx, guest); err != nil {
@@ -181,33 +192,21 @@ func (m *middleware) Close(ctx context.Context) error {
 }
 
 type guest struct {
-	ns               wazero.Namespace
 	guest            wazeroapi.Module
 	handleRequestFn  wazeroapi.Function
 	handleResponseFn wazeroapi.Function
 }
 
 func (m *middleware) newGuest(ctx context.Context) (*guest, error) {
-	ns, err := m.newNamespace(ctx, m.runtime)
-	if err != nil {
-		return nil, fmt.Errorf("wasm: error creating namespace: %w", err)
-	}
+	moduleName := fmt.Sprintf("%d", atomic.AddUint64(&m.instanceCounter, 1))
 
-	// Note: host modules don't use configuration
-	_, err = ns.InstantiateModule(ctx, m.hostModule, wazero.NewModuleConfig())
+	g, err := m.runtime.InstantiateModule(ctx, m.guestModule, m.moduleConfig.WithName(moduleName))
 	if err != nil {
-		_ = ns.Close(ctx)
-		return nil, fmt.Errorf("wasm: error instantiating host: %w", err)
-	}
-
-	g, err := ns.InstantiateModule(ctx, m.guestModule, m.moduleConfig)
-	if err != nil {
-		_ = ns.Close(ctx)
+		_ = m.runtime.Close(ctx)
 		return nil, fmt.Errorf("wasm: error instantiating guest: %w", err)
 	}
 
 	return &guest{
-		ns:               ns,
 		guest:            g,
 		handleRequestFn:  g.ExportedFunction(handler.FuncHandleRequest),
 		handleResponseFn: g.ExportedFunction(handler.FuncHandleResponse),
