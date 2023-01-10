@@ -11,6 +11,7 @@ import (
 
 	"github.com/tetratelabs/wazero"
 	wazeroapi "github.com/tetratelabs/wazero/api"
+	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 
 	"github.com/http-wasm/http-wasm-host-go/api"
 	"github.com/http-wasm/http-wasm-host-go/api/handler"
@@ -43,15 +44,16 @@ type Middleware interface {
 var _ Middleware = (*middleware)(nil)
 
 type middleware struct {
-	host                    handler.Host
-	runtime                 wazero.Runtime
-	hostModule, guestModule wazero.CompiledModule
-	newNamespace            NewNamespace
-	moduleConfig            wazero.ModuleConfig
-	guestConfig             []byte
-	logger                  api.Logger
-	pool                    sync.Pool
-	features                handler.Features
+	host                                handler.Host
+	runtime                             wazero.Runtime
+	cache                               wazero.CompilationCache
+	runtimeConfig                       wazero.RuntimeConfig
+	hostModule, guestModule, wasiModule wazero.CompiledModule
+	moduleConfig                        wazero.ModuleConfig
+	guestConfig                         []byte
+	logger                              api.Logger
+	pool                                sync.Pool
+	features                            handler.Features
 }
 
 func (m *middleware) Features() handler.Features {
@@ -59,28 +61,31 @@ func (m *middleware) Features() handler.Features {
 }
 
 func NewMiddleware(ctx context.Context, guest []byte, host handler.Host, opts ...Option) (Middleware, error) {
+	cache := wazero.NewCompilationCache()
 	o := &options{
-		newRuntime:   DefaultRuntime,
-		newNamespace: DefaultNamespace,
-		moduleConfig: wazero.NewModuleConfig(),
-		logger:       api.NoopLogger{},
+		runtimeConfig: wazero.NewRuntimeConfig().WithCompilationCache(cache),
+		moduleConfig:  wazero.NewModuleConfig(),
+		logger:        api.NoopLogger{},
 	}
 	for _, opt := range opts {
 		opt(o)
 	}
 
-	wr, err := o.newRuntime(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("wasm: error creating middleware: %w", err)
+	wr := wazero.NewRuntimeWithConfig(ctx, o.runtimeConfig)
+	m := &middleware{
+		host:          host,
+		cache:         cache,
+		runtime:       wr,
+		runtimeConfig: o.runtimeConfig,
+		moduleConfig:  o.moduleConfig,
+		guestConfig:   o.guestConfig,
+		logger:        o.logger,
 	}
 
-	m := &middleware{
-		host:         host,
-		runtime:      wr,
-		newNamespace: o.newNamespace,
-		moduleConfig: o.moduleConfig,
-		guestConfig:  o.guestConfig,
-		logger:       o.logger,
+	var err error
+	if m.wasiModule, err = wasi_snapshot_preview1.NewBuilder(wr).Compile(ctx); err != nil {
+		_ = m.Close(ctx)
+		return nil, err
 	}
 
 	if m.hostModule, err = m.compileHost(ctx); err != nil {
@@ -177,38 +182,51 @@ func (m *middleware) HandleResponse(ctx context.Context, reqCtx uint32, hostErr 
 // Close implements api.Closer
 func (m *middleware) Close(ctx context.Context) error {
 	// We don't have to close any guests as the middleware will close it.
-	return m.runtime.Close(ctx)
+	err := m.runtime.Close(ctx)
+	if err != nil {
+		return err
+	}
+
+	for g := m.pool.Get(); g != nil; g = m.pool.Get() {
+		if err = g.(*guest).r.Close(ctx); err != nil {
+			return err
+		}
+	}
+	return m.cache.Close(ctx)
 }
 
 type guest struct {
-	ns               wazero.Namespace
+	r                wazero.Runtime
 	guest            wazeroapi.Module
 	handleRequestFn  wazeroapi.Function
 	handleResponseFn wazeroapi.Function
 }
 
 func (m *middleware) newGuest(ctx context.Context) (*guest, error) {
-	ns, err := m.newNamespace(ctx, m.runtime)
+	r := wazero.NewRuntimeWithConfig(ctx, m.runtimeConfig)
+
+	_, err := r.InstantiateModule(ctx, m.wasiModule, wazero.NewModuleConfig())
 	if err != nil {
-		return nil, fmt.Errorf("wasm: error creating namespace: %w", err)
+		_ = r.Close(ctx)
+		return nil, fmt.Errorf("wasm: error instantiating wasi: %w", err)
 	}
 
 	// Note: host modules don't use configuration
-	_, err = ns.InstantiateModule(ctx, m.hostModule, wazero.NewModuleConfig())
+	_, err = r.InstantiateModule(ctx, m.hostModule, wazero.NewModuleConfig())
 	if err != nil {
-		_ = ns.Close(ctx)
+		_ = r.Close(ctx)
 		return nil, fmt.Errorf("wasm: error instantiating host: %w", err)
 	}
 
-	g, err := ns.InstantiateModule(ctx, m.guestModule, m.moduleConfig)
+	g, err := r.InstantiateModule(ctx, m.guestModule, m.moduleConfig)
 	if err != nil {
-		_ = ns.Close(ctx)
+		_ = r.Close(ctx)
 		return nil, fmt.Errorf("wasm: error instantiating guest: %w", err)
 	}
 
 	return &guest{
-		ns:               ns,
 		guest:            g,
+		r:                r,
 		handleRequestFn:  g.ExportedFunction(handler.FuncHandleRequest),
 		handleResponseFn: g.ExportedFunction(handler.FuncHandleResponse),
 	}, nil
