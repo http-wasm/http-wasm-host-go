@@ -4,15 +4,14 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/tetratelabs/wazero"
+	wazeroapi "github.com/tetratelabs/wazero/api"
+	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 	"io"
 	"strconv"
 	"strings"
 	"sync"
-	"time"
-
-	"github.com/tetratelabs/wazero"
-	wazeroapi "github.com/tetratelabs/wazero/api"
-	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
+	"sync/atomic"
 
 	"github.com/http-wasm/http-wasm-host-go/api"
 	"github.com/http-wasm/http-wasm-host-go/api/handler"
@@ -53,6 +52,7 @@ type middleware struct {
 	logger                  api.Logger
 	pool                    sync.Pool
 	features                handler.Features
+	instanceCounter         uint64
 }
 
 func (m *middleware) Features() handler.Features {
@@ -197,9 +197,9 @@ type guest struct {
 }
 
 func (m *middleware) newGuest(ctx context.Context) (*guest, error) {
-	g, err := m.runtime.InstantiateModule(ctx, m.guestModule, m.moduleConfig.
-		// TODO: use true random name / or make change to wazero to allow anonymous module.
-		WithName(fmt.Sprintf("%#x", time.Now().UnixNano())))
+	moduleName := fmt.Sprintf("%d", atomic.AddUint64(&m.instanceCounter, 1))
+
+	g, err := m.runtime.InstantiateModule(ctx, m.guestModule, m.moduleConfig.WithName(moduleName))
 	if err != nil {
 		_ = m.runtime.Close(ctx)
 		return nil, fmt.Errorf("wasm: error instantiating guest: %w", err)
