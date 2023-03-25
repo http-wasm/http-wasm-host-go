@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 
 	"github.com/tetratelabs/wazero"
 	wazeroapi "github.com/tetratelabs/wazero/api"
@@ -53,7 +52,6 @@ type middleware struct {
 	logger                  api.Logger
 	pool                    sync.Pool
 	features                handler.Features
-	instanceCounter         uint64
 }
 
 func (m *middleware) Features() handler.Features {
@@ -76,9 +74,10 @@ func NewMiddleware(ctx context.Context, guest []byte, host handler.Host, opts ..
 	}
 
 	m := &middleware{
-		host:         host,
-		runtime:      wr,
-		moduleConfig: o.moduleConfig,
+		host:    host,
+		runtime: wr,
+		// Clear the module name, to avoid conflicts when the pool size is >1.
+		moduleConfig: o.moduleConfig.WithName(""),
 		guestConfig:  o.guestConfig,
 		logger:       o.logger,
 	}
@@ -198,9 +197,7 @@ type guest struct {
 }
 
 func (m *middleware) newGuest(ctx context.Context) (*guest, error) {
-	moduleName := fmt.Sprintf("%d", atomic.AddUint64(&m.instanceCounter, 1))
-
-	g, err := m.runtime.InstantiateModule(ctx, m.guestModule, m.moduleConfig.WithName(moduleName))
+	g, err := m.runtime.InstantiateModule(ctx, m.guestModule, m.moduleConfig)
 	if err != nil {
 		_ = m.runtime.Close(ctx)
 		return nil, fmt.Errorf("wasm: error instantiating guest: %w", err)
