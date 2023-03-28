@@ -9,7 +9,7 @@ import (
 	"github.com/http-wasm/http-wasm-guest-tinygo/handler/api"
 )
 
-// TODO(anuraaga): enable_features, get_header, set_header need to be tested separately.
+// TODO: enable_features, get_header, set_header need to be tested separately.
 
 func main() {
 	enabledFeatures := httpwasm.Host.EnableFeatures(api.FeatureBufferRequest | api.FeatureBufferResponse | api.FeatureTrailers)
@@ -31,73 +31,76 @@ func (h *handler) handleRequest(req api.Request, resp api.Response) (next bool, 
 	}
 
 	switch testID {
-	case "get-method/GET":
+	case "get_protocol_version":
+		// The test runner compares this with the request value.
+		resp.Body().WriteString(req.GetProtocolVersion())
+	case "get_method/GET":
 		next, reqCtx = h.testGetMethod(req, resp, "GET")
-	case "get-method/HEAD":
+	case "get_method/HEAD":
 		next, reqCtx = h.testGetMethod(req, resp, "HEAD")
-	case "get-method/POST":
+	case "get_method/POST":
 		next, reqCtx = h.testGetMethod(req, resp, "POST")
-	case "get-method/PUT":
+	case "get_method/PUT":
 		next, reqCtx = h.testGetMethod(req, resp, "PUT")
-	case "get-method/DELETE":
+	case "get_method/DELETE":
 		next, reqCtx = h.testGetMethod(req, resp, "DELETE")
-	case "get-method/CONNECT":
+	case "get_method/CONNECT":
 		next, reqCtx = h.testGetMethod(req, resp, "CONNECT")
-	case "get-method/OPTIONS":
+	case "get_method/OPTIONS":
 		next, reqCtx = h.testGetMethod(req, resp, "OPTIONS")
-	case "get-method/TRACE":
+	case "get_method/TRACE":
 		next, reqCtx = h.testGetMethod(req, resp, "TRACE")
-	case "get-method/PATCH":
+	case "get_method/PATCH":
 		next, reqCtx = h.testGetMethod(req, resp, "PATCH")
-	case "set-method":
+	case "set_method":
 		next, reqCtx = h.testSetMethod(req, resp)
-	case "get-uri/simple":
+	case "get_uri/simple":
 		next, reqCtx = h.testGetURI(req, resp, "/simple")
-	case "get-uri/simple/escaping":
+	case "get_uri/simple/escaping":
 		next, reqCtx = h.testGetURI(req, resp, "/simple%26clean")
-	case "get-uri/query":
+	case "get_uri/query":
 		next, reqCtx = h.testGetURI(req, resp, "/animal?name=panda")
-	case "get-uri/query/escaping":
+	case "get_uri/query/escaping":
 		next, reqCtx = h.testGetURI(req, resp, "/disney?name=chip%26dale")
-	case "set-uri/simple":
+	case "set_uri/simple":
 		next, reqCtx = h.testSetURI(req, resp, "/simple")
-	case "set-uri/simple/escaping":
+	case "set_uri/simple/escaping":
 		next, reqCtx = h.testSetURI(req, resp, "/simple%26clean")
-	case "set-uri/query":
+	case "set_uri/query":
 		next, reqCtx = h.testSetURI(req, resp, "/animal?name=panda")
-	case "set-uri/query/escaping":
+	case "set_uri/query/escaping":
 		next, reqCtx = h.testSetURI(req, resp, "/disney?name=chip%26dale")
-	case "get-request-header/lowercase-key":
+	case "get_header_values/request/lowercase-key":
 		next, reqCtx = h.testGetRequestHeader(req, resp, "single-header", []string{"value"})
-	case "get-request-header/mixedcase-key":
+	case "get_header_values/request/mixedcase-key":
 		next, reqCtx = h.testGetRequestHeader(req, resp, "Single-Header", []string{"value"})
-	case "get-request-header/not-exists":
+	case "get_header_values/request/not-exists":
 		next, reqCtx = h.testGetRequestHeader(req, resp, "not-header", []string{})
-	case "get-request-header/multiple-values":
+	case "get_header_values/request/multiple-values":
 		next, reqCtx = h.testGetRequestHeader(req, resp, "multi-header", []string{"value1", "value2"})
-	case "get-request-header-names":
+	case "get_header_names/request":
 		next, reqCtx = h.testGetRequestHeaderNames(req, resp, []string{"a-header", "b-header"})
-	case "set-request-header/new":
+	case "set_header_value/request/new":
 		next, reqCtx = h.testSetRequestHeader(req, resp, "new-header", "value")
-	case "set-request-header/existing":
+	case "set_header_value/request/existing":
 		next, reqCtx = h.testSetRequestHeader(req, resp, "existing-header", "value")
-	case "add-request-header/new":
+	case "add_header_value/request/new":
 		next, reqCtx = h.testAddRequestHeader(req, resp, "new-header", "value")
-	case "add-request-header/existing":
+	case "add_header_value/request/existing":
 		next, reqCtx = h.testAddRequestHeader(req, resp, "existing-header", "value")
-	case "remove-request-header/new":
+	case "remove_header/request/new":
 		next, reqCtx = h.testRemoveRequestHeader(req, resp, "new-header")
-	case "remove-request-header/existing":
+	case "remove_header/request/existing":
 		next, reqCtx = h.testRemoveRequestHeader(req, resp, "existing-header")
-	case "read-body/empty":
+	case "read_body/request/empty":
 		next, reqCtx = h.testReadBody(req, resp, "")
-	case "read-body/small":
+	case "read_body/request/small":
 		next, reqCtx = h.testReadBody(req, resp, strings.Repeat("a", 5))
-	case "read-body/medium":
+	case "read_body/request/medium":
 		next, reqCtx = h.testReadBody(req, resp, strings.Repeat("a", 2048))
-	case "read-body/large":
+	case "read_body/request/large":
 		next, reqCtx = h.testReadBody(req, resp, strings.Repeat("a", 4096))
-	case "read-body/xlarge":
+	case "read_body/request/xlarge":
 		next, reqCtx = h.testReadBody(req, resp, strings.Repeat("a", 5000))
 	default:
 		fail(resp, "unknown x-httpwasm-test-id")
@@ -110,7 +113,7 @@ func (h *handler) handleRequest(req api.Request, resp api.Response) (next bool, 
 
 func (h *handler) testGetMethod(req api.Request, resp api.Response, expectedMethod string) (next bool, reqCtx uint32) {
 	if req.GetMethod() != expectedMethod {
-		fail(resp, fmt.Sprintf("get_method: expected %s, have %s", expectedMethod, req.GetMethod()))
+		fail(resp, fmt.Sprintf("get_method: want %s, have %s", expectedMethod, req.GetMethod()))
 	}
 	return
 }
@@ -122,12 +125,12 @@ func (h *handler) testSetMethod(req api.Request, _ api.Response) (next bool, req
 
 func (h *handler) testGetURI(req api.Request, resp api.Response, expectedURI string) (next bool, reqCtx uint32) {
 	if req.GetURI() != expectedURI {
-		fail(resp, fmt.Sprintf("get_uri: expected %s, have %s", expectedURI, req.GetURI()))
+		fail(resp, fmt.Sprintf("get_uri: want %s, have %s", expectedURI, req.GetURI()))
 	}
 	return
 }
 
-func (h *handler) testSetURI(req api.Request, resp api.Response, uri string) (next bool, reqCtx uint32) {
+func (h *handler) testSetURI(req api.Request, _ api.Response, uri string) (next bool, reqCtx uint32) {
 	req.SetURI(uri)
 	return true, 0
 }
@@ -135,12 +138,12 @@ func (h *handler) testSetURI(req api.Request, resp api.Response, uri string) (ne
 func (h *handler) testGetRequestHeader(req api.Request, resp api.Response, header string, expectedValue []string) (next bool, reqCtx uint32) {
 	have := req.Headers().GetAll(header)
 	if len(have) != len(expectedValue) {
-		fail(resp, fmt.Sprintf("get_request_header: expected %d values, have %d", len(expectedValue), len(have)))
+		fail(resp, fmt.Sprintf("get_request_header: want %d values, have %d", len(expectedValue), len(have)))
 		return
 	}
 	for i, v := range have {
 		if v != expectedValue[i] {
-			fail(resp, fmt.Sprintf("get_request_header: expected %s, have %s", expectedValue[i], v))
+			fail(resp, fmt.Sprintf("get_request_header: want %s, have %s", expectedValue[i], v))
 			return
 		}
 	}
@@ -152,8 +155,8 @@ func (h *handler) testGetRequestHeaderNames(req api.Request, resp api.Response, 
 	have := req.Headers().Names()
 
 	// Don't check an exact match since it can be tricky to control automatic headers like user-agent, we're probably
-	// fine as long as we have all the expected headers.
-	// TODO(anuraaga): Confirm this suspicion
+	// fine as long as we have all the want headers.
+	// TODO: Confirm this suspicion
 
 	for _, name := range expectedNames {
 		found := false
@@ -164,7 +167,7 @@ func (h *handler) testGetRequestHeaderNames(req api.Request, resp api.Response, 
 			}
 		}
 		if !found {
-			fail(resp, fmt.Sprintf("get_request_header_names: expected %s, not found. have: %v", name, have))
+			fail(resp, fmt.Sprintf("get_header_names/request: want %s, not found. have: %v", name, have))
 			return
 		}
 	}
@@ -172,17 +175,17 @@ func (h *handler) testGetRequestHeaderNames(req api.Request, resp api.Response, 
 	return
 }
 
-func (h *handler) testSetRequestHeader(req api.Request, resp api.Response, header string, value string) (next bool, reqCtx uint32) {
+func (h *handler) testSetRequestHeader(req api.Request, _ api.Response, header string, value string) (next bool, reqCtx uint32) {
 	req.Headers().Set(header, value)
 	return true, 0
 }
 
-func (h *handler) testAddRequestHeader(req api.Request, resp api.Response, header string, value string) (next bool, reqCtx uint32) {
+func (h *handler) testAddRequestHeader(req api.Request, _ api.Response, header string, value string) (next bool, reqCtx uint32) {
 	req.Headers().Add(header, value)
 	return true, 0
 }
 
-func (h *handler) testRemoveRequestHeader(req api.Request, resp api.Response, header string) (next bool, reqCtx uint32) {
+func (h *handler) testRemoveRequestHeader(req api.Request, _ api.Response, header string) (next bool, reqCtx uint32) {
 	req.Headers().Remove(header)
 	return true, 0
 }
@@ -192,17 +195,17 @@ func (h *handler) testReadBody(req api.Request, resp api.Response, expectedBody 
 	buf := &bytes.Buffer{}
 	sz, err := body.WriteTo(buf)
 	if err != nil {
-		fail(resp, fmt.Sprintf("read_body: error %v", err))
+		fail(resp, fmt.Sprintf("read_body/request: error %v", err))
 		return
 	}
 
 	if int(sz) != len(expectedBody) {
-		fail(resp, fmt.Sprintf("read_body: expected %d bytes, have %d", len(expectedBody), sz))
+		fail(resp, fmt.Sprintf("read_body/request: want %d bytes, have %d", len(expectedBody), sz))
 		return
 	}
 
 	if buf.String() != expectedBody {
-		fail(resp, fmt.Sprintf("read_body: expected %s, have %s", expectedBody, buf.String()))
+		fail(resp, fmt.Sprintf("read_body/request: want %s, have %s", expectedBody, buf.String()))
 		return
 	}
 

@@ -3,9 +3,12 @@ package tck
 import (
 	_ "embed"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/http-wasm/http-wasm-host-go/api/handler"
 )
 
 // GuestWASM is the guest wasm module used by the TCK. The host must load this
@@ -14,9 +17,17 @@ import (
 //go:embed tck.wasm
 var GuestWASM []byte
 
-// Run executes the TCK. The url must point to a server with the TCK's guest
-// wasm module loaded on top of the TCK's backend handler.
-func Run(t *testing.T, url string) {
+// Run executes the TCK. The client is http.DefaultClient, or a different value
+// to test the HTTP/2.0 transport. The url must point to a server with the
+// TCK's guest wasm module loaded on top of the TCK's backend handler.
+//
+// For example, here's how to run the tests against a httptest.Server.
+//
+//	server := httptest.NewServer(h)
+//	tck.Run(t, server.Client(), server.URL)
+func Run(t *testing.T, client *http.Client, url string) {
+	t.Parallel()
+
 	if url == "" {
 		t.Fatal("url is empty")
 	}
@@ -26,32 +37,63 @@ func Run(t *testing.T, url string) {
 	}
 
 	r := &testRunner{
-		t:   t,
-		url: url,
+		t:      t,
+		client: client,
+		url:    url,
 	}
 
+	r.testGetProtocolVersion()
 	r.testGetMethod()
 	r.testSetMethod()
 	r.testGetURI()
 	r.testSetURI()
-	r.testGetRequestHeader()
-	r.testGetRequestHeaderNames()
-	r.testSetRequestHeader()
-	r.testAddRequestHeader()
-	r.testRemoveRequestHeader()
-	r.testReadBody()
+	r.testGetHeaderValuesRequest()
+	r.testGetRequestHeaderNamesRequest()
+	r.testSetHeaderValueRequest()
+	r.testAddHeaderValueRequest()
+	r.testRemoveHeaderRequest()
+	r.testReadBodyRequest()
 }
 
 type testRunner struct {
-	t   *testing.T
-	url string
+	t      *testing.T
+	client *http.Client
+	url    string
+}
+
+func (r *testRunner) testGetProtocolVersion() {
+	hostFn := handler.FuncGetProtocolVersion
+
+	testID := hostFn
+	r.t.Run(testID, func(t *testing.T) {
+		req, err := http.NewRequest("GET", fmt.Sprintf("%s/%s", r.url, hostFn), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		req.Header.Set("x-httpwasm-tck-testid", testID)
+		resp, err := r.client.Do(req)
+		if err != nil {
+			t.Error(err)
+		}
+
+		body := checkResponse(t, resp)
+
+		want := resp.Proto
+		have := body
+		if want != have {
+			t.Errorf("expected protocol version to be %s, have %s", want, have)
+		}
+	})
 }
 
 func (r *testRunner) testGetMethod() {
-	// TODO(anuraaga): CONNECT is often handled outside of middleware
+	hostFn := handler.FuncGetMethod
+
+	// TODO: CONNECT is often handled outside of middleware
 	methods := []string{"GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS", "TRACE", "PATCH"}
 	for _, method := range methods {
-		testID := fmt.Sprintf("get-method/%s", method)
+		testID := fmt.Sprintf("%s/%s", hostFn, method)
 		r.t.Run(testID, func(t *testing.T) {
 			req, err := http.NewRequest(method, r.url, nil)
 			if err != nil {
@@ -59,7 +101,7 @@ func (r *testRunner) testGetMethod() {
 			}
 
 			req.Header.Set("x-httpwasm-tck-testid", testID)
-			resp, err := http.DefaultClient.Do(req)
+			resp, err := r.client.Do(req)
 			if err != nil {
 				t.Error(err)
 			}
@@ -70,27 +112,31 @@ func (r *testRunner) testGetMethod() {
 }
 
 func (r *testRunner) testSetMethod() {
-	testID := "set-method"
+	hostFn := handler.FuncSetMethod
+
+	testID := hostFn
 	r.t.Run(testID, func(t *testing.T) {
 		req, err := http.NewRequest("GET", r.url, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		req.Header.Set("x-httpwasm-tck-testid", testID)
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := r.client.Do(req)
 		if err != nil {
 			t.Error(err)
 		}
 
 		checkResponse(t, resp)
 
-		if have, want := resp.Header.Get("x-httpwasm-next-method"), "POST"; have != want {
+		if want, have := "POST", resp.Header.Get("x-httpwasm-next-method"); want != have {
 			t.Errorf("expected method to be %s, have %s", want, have)
 		}
 	})
 }
 
 func (r *testRunner) testGetURI() {
+	hostFn := handler.FuncGetURI
+
 	tests := []struct {
 		testID string
 		uri    string
@@ -115,7 +161,7 @@ func (r *testRunner) testGetURI() {
 
 	for _, tc := range tests {
 		tt := tc
-		testID := fmt.Sprintf("get-uri/%s", tt.testID)
+		testID := fmt.Sprintf("%s/%s", hostFn, tt.testID)
 		r.t.Run(testID, func(t *testing.T) {
 			req, err := http.NewRequest("GET", fmt.Sprintf("%s%s", r.url, tt.uri), nil)
 			if err != nil {
@@ -123,7 +169,7 @@ func (r *testRunner) testGetURI() {
 			}
 
 			req.Header.Set("x-httpwasm-tck-testid", testID)
-			resp, err := http.DefaultClient.Do(req)
+			resp, err := r.client.Do(req)
 			if err != nil {
 				t.Error(err)
 			}
@@ -134,6 +180,8 @@ func (r *testRunner) testGetURI() {
 }
 
 func (r *testRunner) testSetURI() {
+	hostFn := handler.FuncSetURI
+
 	tests := []struct {
 		testID string
 		uri    string
@@ -158,7 +206,7 @@ func (r *testRunner) testSetURI() {
 
 	for _, tc := range tests {
 		tt := tc
-		testID := fmt.Sprintf("set-uri/%s", tt.testID)
+		testID := fmt.Sprintf("%s/%s", hostFn, tt.testID)
 		r.t.Run(testID, func(t *testing.T) {
 			req, err := http.NewRequest("GET", r.url, nil)
 			if err != nil {
@@ -166,21 +214,23 @@ func (r *testRunner) testSetURI() {
 			}
 
 			req.Header.Set("x-httpwasm-tck-testid", testID)
-			resp, err := http.DefaultClient.Do(req)
+			resp, err := r.client.Do(req)
 			if err != nil {
 				t.Error(err)
 			}
 
 			checkResponse(t, resp)
 
-			if have, want := resp.Header.Get("x-httpwasm-next-uri"), tt.uri; have != want {
+			if want, have := tt.uri, resp.Header.Get("x-httpwasm-next-uri"); want != have {
 				t.Errorf("expected uri to be %s, have %s", want, have)
 			}
 		})
 	}
 }
 
-func (r *testRunner) testGetRequestHeader() {
+func (r *testRunner) testGetHeaderValuesRequest() {
+	hostFn := handler.FuncGetHeaderValues
+
 	tests := []struct {
 		testID string
 		key    string
@@ -210,7 +260,7 @@ func (r *testRunner) testGetRequestHeader() {
 
 	for _, tc := range tests {
 		tt := tc
-		testID := fmt.Sprintf("get-request-header/%s", tt.testID)
+		testID := fmt.Sprintf("%s/request/%s", hostFn, tt.testID)
 		r.t.Run(testID, func(t *testing.T) {
 			req, err := http.NewRequest("GET", r.url, nil)
 			if err != nil {
@@ -222,7 +272,7 @@ func (r *testRunner) testGetRequestHeader() {
 			}
 
 			req.Header.Set("x-httpwasm-tck-testid", testID)
-			resp, err := http.DefaultClient.Do(req)
+			resp, err := r.client.Do(req)
 			if err != nil {
 				t.Error(err)
 			}
@@ -232,8 +282,10 @@ func (r *testRunner) testGetRequestHeader() {
 	}
 }
 
-func (r *testRunner) testGetRequestHeaderNames() {
-	testID := "get-request-header-names"
+func (r *testRunner) testGetRequestHeaderNamesRequest() {
+	hostFn := handler.FuncGetHeaderNames
+
+	testID := hostFn + "/request"
 	r.t.Run(testID, func(t *testing.T) {
 		req, err := http.NewRequest("GET", r.url, nil)
 		if err != nil {
@@ -244,7 +296,7 @@ func (r *testRunner) testGetRequestHeaderNames() {
 		req.Header.Add("b-header", "2")
 
 		req.Header.Set("x-httpwasm-tck-testid", testID)
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := r.client.Do(req)
 		if err != nil {
 			t.Error(err)
 		}
@@ -253,7 +305,9 @@ func (r *testRunner) testGetRequestHeaderNames() {
 	})
 }
 
-func (r *testRunner) testReadBody() {
+func (r *testRunner) testReadBodyRequest() {
+	hostFn := handler.FuncReadBody
+
 	tests := []struct {
 		testID   string
 		bodySize int
@@ -282,7 +336,7 @@ func (r *testRunner) testReadBody() {
 
 	for _, tc := range tests {
 		tt := tc
-		testID := fmt.Sprintf("read-body/%s", tt.testID)
+		testID := fmt.Sprintf("%s/request/%s", hostFn, tt.testID)
 		r.t.Run(testID, func(t *testing.T) {
 			payload := strings.Repeat("a", tt.bodySize)
 			req, err := http.NewRequest("POST", r.url, strings.NewReader(payload))
@@ -291,7 +345,7 @@ func (r *testRunner) testReadBody() {
 			}
 
 			req.Header.Set("x-httpwasm-tck-testid", testID)
-			resp, err := http.DefaultClient.Do(req)
+			resp, err := r.client.Do(req)
 			if err != nil {
 				t.Error(err)
 			}
@@ -301,7 +355,9 @@ func (r *testRunner) testReadBody() {
 	}
 }
 
-func (r *testRunner) testSetRequestHeader() {
+func (r *testRunner) testSetHeaderValueRequest() {
+	hostFn := handler.FuncSetHeaderValue
+
 	tests := []struct {
 		name   string
 		header string
@@ -317,7 +373,7 @@ func (r *testRunner) testSetRequestHeader() {
 	}
 	for _, tc := range tests {
 		tt := tc
-		testID := fmt.Sprintf("set-request-header/%s", tt.name)
+		testID := fmt.Sprintf("%s/request/%s", hostFn, tt.name)
 		r.t.Run(testID, func(t *testing.T) {
 			req, err := http.NewRequest("GET", r.url, nil)
 			if err != nil {
@@ -327,21 +383,23 @@ func (r *testRunner) testSetRequestHeader() {
 			req.Header.Set("existing-header", "bear")
 
 			req.Header.Set("x-httpwasm-tck-testid", testID)
-			resp, err := http.DefaultClient.Do(req)
+			resp, err := r.client.Do(req)
 			if err != nil {
 				t.Error(err)
 			}
 
 			checkResponse(t, resp)
 
-			if have, want := resp.Header.Get(fmt.Sprintf("x-httpwasm-next-header-%s-0", tt.header)), "value"; have != want {
+			if want, have := "value", resp.Header.Get(fmt.Sprintf("x-httpwasm-next-header-%s-0", tt.header)); want != have {
 				t.Errorf("expected header to be %s, have %s", want, have)
 			}
 		})
 	}
 }
 
-func (r *testRunner) testAddRequestHeader() {
+func (r *testRunner) testAddHeaderValueRequest() {
+	hostFn := handler.FuncAddHeaderValue
+
 	tests := []struct {
 		name   string
 		header string
@@ -360,7 +418,7 @@ func (r *testRunner) testAddRequestHeader() {
 	}
 	for _, tc := range tests {
 		tt := tc
-		testID := fmt.Sprintf("add-request-header/%s", tt.name)
+		testID := fmt.Sprintf("%s/request/%s", hostFn, tt.name)
 		r.t.Run(testID, func(t *testing.T) {
 			req, err := http.NewRequest("GET", r.url, nil)
 			if err != nil {
@@ -370,7 +428,7 @@ func (r *testRunner) testAddRequestHeader() {
 			req.Header.Set("existing-header", "bear")
 
 			req.Header.Set("x-httpwasm-tck-testid", testID)
-			resp, err := http.DefaultClient.Do(req)
+			resp, err := r.client.Do(req)
 			if err != nil {
 				t.Error(err)
 			}
@@ -378,7 +436,7 @@ func (r *testRunner) testAddRequestHeader() {
 			checkResponse(t, resp)
 
 			for i, v := range tt.values {
-				if have, want := resp.Header.Get(fmt.Sprintf("x-httpwasm-next-header-%s-%d", tt.header, i)), v; have != want {
+				if want, have := v, resp.Header.Get(fmt.Sprintf("x-httpwasm-next-header-%s-%d", tt.header, i)); want != have {
 					t.Errorf("expected header to be %s, have %s", want, have)
 				}
 			}
@@ -386,7 +444,9 @@ func (r *testRunner) testAddRequestHeader() {
 	}
 }
 
-func (r *testRunner) testRemoveRequestHeader() {
+func (r *testRunner) testRemoveHeaderRequest() {
+	hostFn := handler.FuncRemoveHeader
+
 	tests := []struct {
 		name    string
 		header  string
@@ -405,7 +465,7 @@ func (r *testRunner) testRemoveRequestHeader() {
 	}
 	for _, tc := range tests {
 		tt := tc
-		testID := fmt.Sprintf("remove-request-header/%s", tt.name)
+		testID := fmt.Sprintf("%s/request/%s", hostFn, tt.name)
 		r.t.Run(testID, func(t *testing.T) {
 			req, err := http.NewRequest("GET", r.url, nil)
 			if err != nil {
@@ -415,7 +475,7 @@ func (r *testRunner) testRemoveRequestHeader() {
 			req.Header.Set("existing-header", "bear")
 
 			req.Header.Set("x-httpwasm-tck-testid", testID)
-			resp, err := http.DefaultClient.Do(req)
+			resp, err := r.client.Do(req)
 			if err != nil {
 				t.Error(err)
 			}
@@ -426,14 +486,14 @@ func (r *testRunner) testRemoveRequestHeader() {
 			if tt.removed {
 				want = ""
 			}
-			if have := resp.Header.Get("x-httpwasm-next-header-existing-header-0"); have != want {
+			if have := resp.Header.Get("x-httpwasm-next-header-existing-header-0"); want != have {
 				t.Errorf("expected header to be %s, have %s", want, have)
 			}
 		})
 	}
 }
 
-func checkResponse(t *testing.T, resp *http.Response) {
+func checkResponse(t *testing.T, resp *http.Response) string {
 	t.Helper()
 
 	if resp.Header.Get("x-httpwasm-tck-handled") != "1" {
@@ -447,4 +507,10 @@ func checkResponse(t *testing.T, resp *http.Response) {
 		}
 		t.Errorf("assertion failed: %s", msg)
 	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Error("error reading response body")
+	}
+	return string(body)
 }

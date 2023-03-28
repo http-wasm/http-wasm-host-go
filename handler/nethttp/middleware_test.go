@@ -145,56 +145,6 @@ func TestURI(t *testing.T) {
 	}
 }
 
-func TestProtocolVersion(t *testing.T) {
-	tests := []struct {
-		http2    bool
-		expected string
-	}{
-		{
-			http2:    false,
-			expected: "HTTP/1.1",
-		},
-		{
-			http2:    true,
-			expected: "HTTP/2.0",
-		},
-	}
-
-	for _, tt := range tests {
-		tc := tt
-		t.Run(tc.expected, func(t *testing.T) {
-			mw, err := wasm.NewMiddleware(testCtx, test.BinE2EProtocolVersion)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer mw.Close(testCtx)
-
-			ts := httptest.NewUnstartedServer(mw.NewHandler(testCtx, noopHandler))
-			if tc.http2 {
-				ts.EnableHTTP2 = true
-				ts.StartTLS()
-			} else {
-				ts.Start()
-			}
-			defer ts.Close()
-
-			resp, err := ts.Client().Get(ts.URL)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer resp.Body.Close()
-
-			body, err := io.ReadAll(resp.Body)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if want, have := tc.expected, string(body); want != have {
-				t.Fatalf("unexpected response body, want: %q, have: %q", want, have)
-			}
-		})
-	}
-}
-
 // TestHeaderNames uses test.BinE2EHeaderNames which ensures count/len are
 // correct.
 func TestHeaderNames(t *testing.T) {
