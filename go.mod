@@ -2,4 +2,4 @@ module github.com/http-wasm/http-wasm-host-go
 
 go 1.19
 
-require github.com/tetratelabs/wazero v1.0.2
+require github.com/tetratelabs/wazero v1.0.3
