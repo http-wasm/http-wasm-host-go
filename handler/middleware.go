@@ -23,6 +23,9 @@ import (
 type Middleware interface {
 	// HandleRequest handles a request by calling handler.FuncHandleRequest on
 	// the guest.
+	//
+	// Note: If the handler.CtxNext is returned with `next=1`, you must call
+	// HandleResponse.
 	HandleRequest(ctx context.Context) (outCtx context.Context, ctxNext handler.CtxNext, err error)
 
 	// HandleResponse handles a response by calling handler.FuncHandleResponse
@@ -143,8 +146,7 @@ func (m *middleware) HandleRequest(ctx context.Context) (outCtx context.Context,
 
 	s := &requestState{features: m.features, putPool: m.pool.Put, g: g}
 	defer func() {
-		callNext := ctxNext != 0
-		if callNext { // will call the next handler
+		if ctxNext != 0 { // will call the next handler
 			if closeErr := s.closeRequest(); err == nil {
 				err = closeErr
 			}
