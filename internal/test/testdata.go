@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"runtime"
 )
 
 //go:embed testdata/bench/log.wasm
@@ -84,7 +85,11 @@ var BinE2EHeaderNames []byte
 
 // binExample instead of go:embed as files aren't relative to this directory.
 func binExample(name string) []byte {
-	p := path.Join("..", "..", "examples", name+".wasm")
+	_, thisFile, _, ok := runtime.Caller(1)
+	if !ok {
+		log.Panicln("cannot determine current path")
+	}
+	p := path.Join(path.Dir(thisFile), "..", "..", "examples", name+".wasm")
 	if wasm, err := os.ReadFile(p); err != nil {
 		log.Panicln(err)
 		return nil

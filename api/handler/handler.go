@@ -162,3 +162,47 @@ type Host interface {
 	// FeatureTrailers is not supported.
 	RemoveResponseTrailer(ctx context.Context, name string)
 }
+
+// eofReader is safer than reading from os.DevNull as it can never overrun
+// operating system file descriptors.
+type eofReader struct{}
+
+func (eofReader) Close() (err error)       { return }
+func (eofReader) Read([]byte) (int, error) { return 0, io.EOF }
+
+type UnimplementedHost struct{}
+
+var _ Host = UnimplementedHost{}
+
+func (UnimplementedHost) EnableFeatures(context.Context, Features) Features                  { return 0 }
+func (UnimplementedHost) GetMethod(context.Context) string                                   { return "GET" }
+func (UnimplementedHost) SetMethod(context.Context, string)                                  {}
+func (UnimplementedHost) GetURI(context.Context) string                                      { return "" }
+func (UnimplementedHost) SetURI(context.Context, string)                                     {}
+func (UnimplementedHost) GetProtocolVersion(context.Context) string                          { return "HTTP/1.1" }
+func (UnimplementedHost) GetRequestHeaderNames(context.Context) (names []string)             { return }
+func (UnimplementedHost) GetRequestHeaderValues(context.Context, string) (values []string)   { return }
+func (UnimplementedHost) SetRequestHeaderValue(context.Context, string, string)              {}
+func (UnimplementedHost) AddRequestHeaderValue(context.Context, string, string)              {}
+func (UnimplementedHost) RemoveRequestHeader(context.Context, string)                        {}
+func (UnimplementedHost) RequestBodyReader(context.Context) io.ReadCloser                    { return eofReader{} }
+func (UnimplementedHost) RequestBodyWriter(context.Context) io.Writer                        { return io.Discard }
+func (UnimplementedHost) GetRequestTrailerNames(context.Context) (names []string)            { return }
+func (UnimplementedHost) GetRequestTrailerValues(context.Context, string) (values []string)  { return }
+func (UnimplementedHost) SetRequestTrailerValue(context.Context, string, string)             {}
+func (UnimplementedHost) AddRequestTrailerValue(context.Context, string, string)             {}
+func (UnimplementedHost) RemoveRequestTrailer(context.Context, string)                       {}
+func (UnimplementedHost) GetStatusCode(context.Context) uint32                               { return 200 }
+func (UnimplementedHost) SetStatusCode(context.Context, uint32)                              {}
+func (UnimplementedHost) GetResponseHeaderNames(context.Context) (names []string)            { return }
+func (UnimplementedHost) GetResponseHeaderValues(context.Context, string) (values []string)  { return }
+func (UnimplementedHost) SetResponseHeaderValue(context.Context, string, string)             {}
+func (UnimplementedHost) AddResponseHeaderValue(context.Context, string, string)             {}
+func (UnimplementedHost) RemoveResponseHeader(context.Context, string)                       {}
+func (UnimplementedHost) ResponseBodyReader(context.Context) io.ReadCloser                   { return eofReader{} }
+func (UnimplementedHost) ResponseBodyWriter(context.Context) io.Writer                       { return io.Discard }
+func (UnimplementedHost) GetResponseTrailerNames(context.Context) (names []string)           { return }
+func (UnimplementedHost) GetResponseTrailerValues(context.Context, string) (values []string) { return }
+func (UnimplementedHost) SetResponseTrailerValue(context.Context, string, string)            {}
+func (UnimplementedHost) AddResponseTrailerValue(context.Context, string, string)            {}
+func (UnimplementedHost) RemoveResponseTrailer(context.Context, string)                      {}
