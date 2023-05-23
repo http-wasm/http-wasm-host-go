@@ -26,6 +26,9 @@ type requestState struct {
 	// features are the current request's features which may be more than
 	// Middleware.Features.
 	features handler.Features
+
+	putPool func(x any)
+	g       *guest
 }
 
 func (r *requestState) closeRequest() (err error) {
@@ -44,6 +47,10 @@ func (r *requestState) closeRequest() (err error) {
 
 // Close implements io.Closer
 func (r *requestState) Close() (err error) {
+	if g := r.g; g != nil {
+		r.putPool(r.g)
+		r.g = nil
+	}
 	err = r.closeRequest()
 	if respBW := r.responseBodyWriter; respBW != nil {
 		if f, ok := respBW.(http.Flusher); ok {

@@ -45,15 +45,15 @@ type Middleware interface {
 var _ Middleware = (*middleware)(nil)
 
 type middleware struct {
-	host                    handler.Host
-	runtime                 wazero.Runtime
-	hostModule, guestModule wazero.CompiledModule
-	moduleConfig            wazero.ModuleConfig
-	guestConfig             []byte
-	logger                  api.Logger
-	pool                    sync.Pool
-	features                handler.Features
-	instanceCounter         uint64
+	host            handler.Host
+	runtime         wazero.Runtime
+	guestModule     wazero.CompiledModule
+	moduleConfig    wazero.ModuleConfig
+	guestConfig     []byte
+	logger          api.Logger
+	pool            sync.Pool
+	features        handler.Features
+	instanceCounter uint64
 }
 
 func (m *middleware) Features() handler.Features {
@@ -83,29 +83,30 @@ func NewMiddleware(ctx context.Context, guest []byte, host handler.Host, opts ..
 		logger:       o.logger,
 	}
 
-	if m.hostModule, err = m.compileHost(ctx); err != nil {
-		_ = m.Close(ctx)
-		return nil, err
-	}
-
-	if _, err = wasi_snapshot_preview1.Instantiate(ctx, m.runtime); err != nil {
-		return nil, fmt.Errorf("wasm: error instantiating wasi: %w", err)
-	}
-
-	// Note: host modules don't use configuration
-	_, err = m.runtime.InstantiateModule(ctx, m.hostModule, wazero.NewModuleConfig())
-	if err != nil {
-		_ = m.runtime.Close(ctx)
-		return nil, fmt.Errorf("wasm: error instantiating host: %w", err)
-	}
-
 	if m.guestModule, err = m.compileGuest(ctx, guest); err != nil {
-		_ = m.Close(ctx)
+		_ = wr.Close(ctx)
 		return nil, err
 	}
 
+	// Detect and handle any host imports or lack thereof.
+	imports := detectImports(m.guestModule.ImportedFunctions())
+	switch {
+	case imports&importWasiP1 != 0:
+		if _, err = wasi_snapshot_preview1.Instantiate(ctx, m.runtime); err != nil {
+			_ = wr.Close(ctx)
+			return nil, fmt.Errorf("wasm: error instantiating wasi: %w", err)
+		}
+		fallthrough // proceed to configure any http_handler imports
+	case imports&importHttpHandler != 0:
+		if _, err = m.instantiateHost(ctx); err != nil {
+			_ = wr.Close(ctx)
+			return nil, fmt.Errorf("wasm: error instantiating host: %w", err)
+		}
+	}
+
+	// Eagerly add one instance to the pool. Doing so helps to fail fast.
 	if g, err := m.newGuest(ctx); err != nil {
-		_ = m.Close(ctx)
+		_ = wr.Close(ctx)
 		return nil, err
 	} else {
 		m.pool.Put(g)
@@ -139,11 +140,11 @@ func (m *middleware) HandleRequest(ctx context.Context) (outCtx context.Context,
 		err = guestErr
 		return
 	}
-	defer m.pool.Put(g)
 
-	s := &requestState{features: m.features}
+	s := &requestState{features: m.features, putPool: m.pool.Put, g: g}
 	defer func() {
-		if ctxNext != 0 { // will call the next handler
+		callNext := ctxNext != 0
+		if callNext { // will call the next handler
 			if closeErr := s.closeRequest(); err == nil {
 				err = closeErr
 			}
@@ -173,16 +174,10 @@ func (m *middleware) getOrCreateGuest(ctx context.Context) (*guest, error) {
 
 // HandleResponse implements Middleware.HandleResponse
 func (m *middleware) HandleResponse(ctx context.Context, reqCtx uint32, hostErr error) error {
-	g, err := m.getOrCreateGuest(ctx)
-	if err != nil {
-		return err
-	}
-	defer m.pool.Put(g)
-
 	s := requestStateFromContext(ctx)
 	defer s.Close()
 
-	return g.handleResponse(ctx, reqCtx, hostErr)
+	return s.g.handleResponse(ctx, reqCtx, hostErr)
 }
 
 // Close implements api.Closer
@@ -529,7 +524,7 @@ func (m *middleware) readBody(ctx context.Context, mod wazeroapi.Module, stack [
 		panic("unsupported body kind: " + strconv.Itoa(int(kind)))
 	}
 
-	eofLen := readBody(ctx, mod, buf, bufLimit, r)
+	eofLen := readBody(mod, buf, bufLimit, r)
 
 	stack[0] = eofLen
 }
@@ -562,10 +557,10 @@ func (m *middleware) writeBody(ctx context.Context, mod wazeroapi.Module, params
 		panic("unsupported body kind: " + strconv.Itoa(int(kind)))
 	}
 
-	writeBody(ctx, mod, buf, bufLen, w)
+	writeBody(mod, buf, bufLen, w)
 }
 
-func writeBody(ctx context.Context, mod wazeroapi.Module, buf, bufLen uint32, w io.Writer) {
+func writeBody(mod wazeroapi.Module, buf, bufLen uint32, w io.Writer) {
 	// buf_len 0 means to overwrite with nothing
 	var b []byte
 	if bufLen > 0 {
@@ -596,7 +591,7 @@ func (m *middleware) setStatusCode(ctx context.Context, params []uint64) {
 	m.host.SetStatusCode(ctx, statusCode)
 }
 
-func readBody(ctx context.Context, mod wazeroapi.Module, buf uint32, bufLimit handler.BufLimit, r io.Reader) (eofLen uint64) {
+func readBody(mod wazeroapi.Module, buf uint32, bufLimit handler.BufLimit, r io.Reader) (eofLen uint64) {
 	// buf_limit 0 serves no purpose as implementations won't return EOF on it.
 	if bufLimit == 0 {
 		panic(fmt.Errorf("buf_limit==0 reading body"))
@@ -645,8 +640,8 @@ func mustBeforeNextOrFeature(ctx context.Context, feature handler.Features, op, 
 
 const i32, i64 = wazeroapi.ValueTypeI32, wazeroapi.ValueTypeI64
 
-func (m *middleware) compileHost(ctx context.Context) (wazero.CompiledModule, error) {
-	if compiled, err := m.runtime.NewHostModuleBuilder(handler.HostModule).
+func (m *middleware) instantiateHost(ctx context.Context) (wazeroapi.Module, error) {
+	return m.runtime.NewHostModuleBuilder(handler.HostModule).
 		NewFunctionBuilder().
 		WithGoFunction(wazeroapi.GoFunc(m.enableFeatures), []wazeroapi.ValueType{i32}, []wazeroapi.ValueType{i32}).
 		WithParameterNames("features").Export(handler.FuncEnableFeatures).
@@ -701,11 +696,7 @@ func (m *middleware) compileHost(ctx context.Context) (wazero.CompiledModule, er
 		NewFunctionBuilder().
 		WithGoFunction(wazeroapi.GoFunc(m.setStatusCode), []wazeroapi.ValueType{i32}, []wazeroapi.ValueType{}).
 		WithParameterNames("status_code").Export(handler.FuncSetStatusCode).
-		Compile(ctx); err != nil {
-		return nil, fmt.Errorf("wasm: error compiling host: %w", err)
-	} else {
-		return compiled, nil
-	}
+		Instantiate(ctx)
 }
 
 func mustHeaderMutable(ctx context.Context, op string, kind handler.HeaderKind) {
@@ -764,5 +755,25 @@ func writeStringIfUnderLimit(mem wazeroapi.Memory, offset, limit handler.BufLimi
 		return // nothing to write
 	}
 	mem.WriteString(offset, v)
+	return
+}
+
+type imports uint
+
+const (
+	importWasiP1 imports = 1 << iota
+	importHttpHandler
+)
+
+func detectImports(importedFns []wazeroapi.FunctionDefinition) (imports imports) {
+	for _, f := range importedFns {
+		moduleName, _, _ := f.Import()
+		switch moduleName {
+		case handler.HostModule:
+			imports |= importHttpHandler
+		case wasi_snapshot_preview1.ModuleName:
+			imports |= importWasiP1
+		}
+	}
 	return
 }
