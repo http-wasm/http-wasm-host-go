@@ -45,7 +45,10 @@ func (r *requestState) closeRequest() (err error) {
 	return
 }
 
-// Close implements io.Closer
+// Close releases all resources for the current request, including:
+//   - putting the guest module back into the pool
+//   - releasing any request body resources
+//   - releasing any response body resources
 func (r *requestState) Close() (err error) {
 	if g := r.g; g != nil {
 		r.putPool(r.g)

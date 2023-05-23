@@ -150,7 +150,7 @@ func (m *middleware) HandleRequest(ctx context.Context) (outCtx context.Context,
 			if closeErr := s.closeRequest(); err == nil {
 				err = closeErr
 			}
-		} else { // will return the response
+		} else { // guest errored or returned the response
 			if closeErr := s.Close(); err == nil {
 				err = closeErr
 			}
