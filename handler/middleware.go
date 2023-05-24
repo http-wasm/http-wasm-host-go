@@ -579,7 +579,6 @@ func writeBody(mod wazeroapi.Module, buf, bufLen uint32, w io.Writer) {
 // getStatusCode implements the WebAssembly host function
 // handler.FuncGetStatusCode.
 func (m *middleware) getStatusCode(ctx context.Context, results []uint64) {
-
 	statusCode := m.host.GetStatusCode(ctx)
 
 	results[0] = uint64(statusCode)
