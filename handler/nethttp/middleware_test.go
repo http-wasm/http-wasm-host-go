@@ -75,6 +75,31 @@ func TestConfig(t *testing.T) {
 	}
 }
 
+func TestProtocolVersion(t *testing.T) {
+	mw, err := wasm.NewMiddleware(testCtx, test.BinE2EProtocolVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mw.Close(testCtx)
+
+	ts := httptest.NewServer(mw.NewHandler(testCtx, noopHandler))
+	defer ts.Close()
+
+	resp, err := ts.Client().Get(ts.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want, have := "HTTP/1.1", string(body); want != have {
+		t.Fatalf("unexpected protocol version, want: %q, have: %q", want, have)
+	}
+}
+
 func TestMethod(t *testing.T) {
 	mw, err := wasm.NewMiddleware(testCtx, test.BinE2EMethod)
 	if err != nil {
@@ -165,6 +190,29 @@ func TestHeaderNames(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("invalid status code: %d, status message: %s", resp.StatusCode, resp.Status)
 	}
+}
+
+func TestHeaderValue(t *testing.T) {
+	mw, err := wasm.NewMiddleware(testCtx, test.BinE2EHeaderValue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mw.Close(testCtx)
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if want, have := "text/plain", r.Header.Get("Content-Type"); want != have {
+			t.Fatalf("unexpected Content-Type, want: %q, have: %q", want, have)
+		}
+	})
+
+	ts := httptest.NewServer(mw.NewHandler(testCtx, next))
+	defer ts.Close()
+
+	resp, err := ts.Client().Get(ts.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
 }
 
 // TestHandleResponse uses test.BinE2EHandleResponse which ensures reqCtx

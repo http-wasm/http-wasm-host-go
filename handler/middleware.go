@@ -178,6 +178,7 @@ func (m *middleware) getOrCreateGuest(ctx context.Context) (*guest, error) {
 func (m *middleware) HandleResponse(ctx context.Context, reqCtx uint32, hostErr error) error {
 	s := requestStateFromContext(ctx)
 	defer s.Close()
+	s.afterNext = true
 
 	return s.g.handleResponse(ctx, reqCtx, hostErr)
 }
@@ -323,6 +324,8 @@ func (m *middleware) getURI(ctx context.Context, mod wazeroapi.Module, stack []u
 func (m *middleware) setURI(ctx context.Context, mod wazeroapi.Module, params []uint64) {
 	uri := uint32(params[0])
 	uriLen := uint32(params[1])
+
+	_ = mustBeforeNext(ctx, "set", "uri")
 
 	var p string
 	if uriLen > 0 { // overwrite with empty is supported
@@ -576,8 +579,6 @@ func writeBody(mod wazeroapi.Module, buf, bufLen uint32, w io.Writer) {
 // getStatusCode implements the WebAssembly host function
 // handler.FuncGetStatusCode.
 func (m *middleware) getStatusCode(ctx context.Context, results []uint64) {
-	_ = mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "get", "status code")
-
 	statusCode := m.host.GetStatusCode(ctx)
 
 	results[0] = uint64(statusCode)
@@ -622,14 +623,14 @@ func readBody(mod wazeroapi.Module, buf uint32, bufLimit handler.BufLimit, r io.
 }
 
 func mustBeforeNext(ctx context.Context, op, kind string) (s *requestState) {
-	if s = requestStateFromContext(ctx); s.beforeNext {
+	if s = requestStateFromContext(ctx); s.afterNext {
 		panic(fmt.Errorf("can't %s %s after next handler", op, kind))
 	}
 	return
 }
 
 func mustBeforeNextOrFeature(ctx context.Context, feature handler.Features, op, kind string) (s *requestState) {
-	if s = requestStateFromContext(ctx); !s.beforeNext {
+	if s = requestStateFromContext(ctx); !s.afterNext {
 		// Assume this is serving a response from the guest.
 	} else if s.features.IsEnabled(feature) {
 		// Assume the guest is overwriting the response from next.
