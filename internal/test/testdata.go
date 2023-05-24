@@ -68,20 +68,26 @@ var BinExampleWASI = func() []byte {
 	return binExample("wasi")
 }()
 
+//go:embed testdata/e2e/protocol_version.wasm
+var BinE2EProtocolVersion []byte
+
 //go:embed testdata/e2e/method.wasm
 var BinE2EMethod []byte
 
 //go:embed testdata/e2e/uri.wasm
 var BinE2EURI []byte
 
-//go:embed testdata/e2e/protocol_version.wasm
-var BinE2EProtocolVersion []byte
+//go:embed testdata/e2e/header_value.wasm
+var BinE2EHeaderValue []byte
 
 //go:embed testdata/e2e/handle_response.wasm
 var BinE2EHandleResponse []byte
 
 //go:embed testdata/e2e/header_names.wasm
 var BinE2EHeaderNames []byte
+
+//go:embed testdata/invalid/set_request_header_after_next.wasm
+var BinInvalidSetRequestHeaderAfterNext []byte
 
 // binExample instead of go:embed as files aren't relative to this directory.
 func binExample(name string) []byte {

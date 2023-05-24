@@ -36,8 +36,8 @@
       (i32.const 0) ;; body_kind_request
       (global.get $buf) (local.get $len))
 
-    ;; skip any next handler as we wrote the response body.
-    (return (i64.const 0)))
+    ;; call the next handler
+    (return (i64.const 1)))
 
   ;; handle_response is no-op as this is a request-only handler.
   (func (export "handle_response") (param $reqCtx i32) (param $is_error i32))
