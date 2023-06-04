@@ -15,12 +15,12 @@
   (global $value_len i32 (i32.const 10))
 
   ;; handle_request returns non-zero to proceed to the next handler.
-  (func (export "handle_request") (result (; ctx_next ;) i64)
+  (func $handle_request (export "handle_request") (result (; ctx_next ;) i64)
     ;; call the next handler
     (return (i64.const 1)))
 
   ;; handle_response tries to set a request header even though it is too late.
-  (func (export "handle_response") (param $reqCtx i32) (param $is_error i32)
+  (func $handle_response (export "handle_response") (param $reqCtx i32) (param $is_error i32)
     (call $set_header_value
       (i32.const 0) ;; header_kind_request
       (global.get $name) (global.get $name_len)
