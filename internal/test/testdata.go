@@ -86,8 +86,17 @@ var BinE2EHandleResponse []byte
 //go:embed testdata/e2e/header_names.wasm
 var BinE2EHeaderNames []byte
 
-//go:embed testdata/invalid/set_request_header_after_next.wasm
-var BinInvalidSetRequestHeaderAfterNext []byte
+//go:embed testdata/error/panic_on_handle_request.wasm
+var BinErrorPanicOnHandleRequest []byte
+
+//go:embed testdata/error/panic_on_handle_response.wasm
+var BinErrorPanicOnHandleResponse []byte
+
+//go:embed testdata/error/panic_on_start.wasm
+var BinErrorPanicOnStart []byte
+
+//go:embed testdata/error/set_request_header_after_next.wasm
+var BinErrorSetRequestHeaderAfterNext []byte
 
 // binExample instead of go:embed as files aren't relative to this directory.
 func binExample(name string) []byte {

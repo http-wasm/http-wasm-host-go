@@ -4,7 +4,6 @@ import (
 	"context"
 	_ "embed"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/http-wasm/http-wasm-host-go/api/handler"
@@ -13,16 +12,89 @@ import (
 
 var testCtx = context.Background()
 
-func TestMiddlewareAfterNextErrors(t *testing.T) {
+func TestNewMiddleware(t *testing.T) {
 	tests := []struct {
 		name          string
 		guest         []byte
 		expectedError string
 	}{
 		{
-			name:          "set_header_value request",
-			guest:         test.BinInvalidSetRequestHeaderAfterNext,
-			expectedError: "can't set request header after next handler",
+			name:  "ok",
+			guest: test.BinE2EProtocolVersion,
+		},
+		{
+			name:  "panic on _start",
+			guest: test.BinErrorPanicOnStart,
+			expectedError: `wasm: error instantiating guest: module[1] function[_start] failed: wasm error: unreachable
+wasm stack trace:
+	panic_on_start.main()`,
+		},
+	}
+
+	for _, tt := range tests {
+		tc := tt
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			mw, err := NewMiddleware(testCtx, tc.guest, handler.UnimplementedHost{})
+			requireEqualError(t, err, tc.expectedError)
+			if mw != nil {
+				mw.Close(testCtx)
+			}
+		})
+	}
+}
+
+func TestMiddlewareHandleRequest_Error(t *testing.T) {
+	tests := []struct {
+		name          string
+		guest         []byte
+		expectedError string
+	}{
+		{
+			name:  "panic",
+			guest: test.BinErrorPanicOnHandleRequest,
+			expectedError: `wasm error: unreachable
+wasm stack trace:
+	panic_on_handle_request.handle_request() i64`,
+		},
+	}
+
+	for _, tt := range tests {
+		tc := tt
+		t.Run(tc.name, func(t *testing.T) {
+			mw, err := NewMiddleware(testCtx, tc.guest, handler.UnimplementedHost{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer mw.Close(testCtx)
+
+			_, _, err = mw.HandleRequest(testCtx)
+			requireEqualError(t, err, tc.expectedError)
+		})
+	}
+}
+
+func TestMiddlewareHandleResponse_Error(t *testing.T) {
+	tests := []struct {
+		name          string
+		guest         []byte
+		expectedError string
+	}{
+		{
+			name:  "panic",
+			guest: test.BinErrorPanicOnHandleResponse,
+			expectedError: `wasm error: unreachable
+wasm stack trace:
+	panic_on_handle_response.handle_response(i32,i32)`,
+		},
+		{
+			name:  "set_header_value request",
+			guest: test.BinErrorSetRequestHeaderAfterNext,
+			expectedError: `can't set request header after next handler (recovered by wazero)
+wasm stack trace:
+	http_handler.set_header_value(i32,i32,i32,i32,i32)
+	set_request_header_after_next.handle_response(i32,i32)`,
 		},
 	}
 
@@ -41,15 +113,8 @@ func TestMiddlewareAfterNextErrors(t *testing.T) {
 
 			// We do expect an error on the response path
 			err = mw.HandleResponse(ctx, 0, nil)
-			requireErrorPrefix(t, err, tc.expectedError)
+			requireEqualError(t, err, tc.expectedError)
 		})
-	}
-}
-
-func requireErrorPrefix(t *testing.T, err error, want string) {
-	t.Helper()
-	if have := err.Error(); !strings.HasPrefix(have, want) {
-		t.Errorf("unexpected error message prefix, want: %s, have: %s", want, have)
 	}
 }
 
@@ -130,5 +195,15 @@ func requireHandleRequest(t *testing.T, mw Middleware, ctxNext handler.CtxNext, 
 	}
 	if mw.(*middleware).pool.Get() != nil {
 		t.Error("expected handler to not return guest to the pool")
+	}
+}
+
+func requireEqualError(t *testing.T, err error, expectedError string) {
+	if err != nil {
+		if want, have := expectedError, err.Error(); want != have {
+			t.Fatalf("unexpected error: want %v, have %v", want, have)
+		}
+	} else if want := expectedError; want != "" {
+		t.Fatalf("expected error %v", want)
 	}
 }
