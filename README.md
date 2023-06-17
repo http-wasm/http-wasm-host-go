@@ -19,5 +19,5 @@ The current maturity phase is early draft. Once this is integrated with
 [2]: https://webassembly.org/
 [3]: https://http-wasm.io/http-handler-abi/
 [4]: https://pkg.go.dev/net/http#Handler
-[5]: https://github.com/corazawaf/coraza-proxy-wasm
-[6]: https://github.com/http-wasm/components-contrib/
+[5]: https://github.com/corazawaf/coraza-http-wasm
+[6]: https://github.com/dapr/components-contrib/
