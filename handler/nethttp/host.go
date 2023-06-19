@@ -88,14 +88,25 @@ func (host) GetRequestHeaderNames(ctx context.Context) (names []string) {
 	count := len(r.Header)
 	i := 0
 	if r.Host != "" { // special-case the host header.
-		count++
-		names = make([]string, count)
+		names = make([]string, count+2)
 		names[i] = "Host"
 		i++
-	} else if count == 0 {
-		return nil
-	} else {
-		names = make([]string, count)
+	}
+
+	if len(r.TransferEncoding) > 0 {
+		if i == 0 {
+			names = make([]string, count+1)
+		}
+		names[i] = "Transfer-Encoding"
+		i++
+	}
+
+	if i == 0 {
+		if count == 0 {
+			return nil
+		} else {
+			names = make([]string, count)
+		}
 	}
 
 	for n := range r.Header {
@@ -118,8 +129,11 @@ func (host) GetRequestHeaderNames(ctx context.Context) (names []string) {
 // GetRequestHeaderValues implements the same method as documented on handler.Host.
 func (host) GetRequestHeaderValues(ctx context.Context, name string) []string {
 	r := requestStateFromContext(ctx).r
-	if textproto.CanonicalMIMEHeaderKey(name) == "Host" { // special-case the host header.
+	switch textproto.CanonicalMIMEHeaderKey(name) {
+	case "Host": // special-case the host header.
 		return []string{r.Host}
+	case "Transfer-Encoding":
+		return r.TransferEncoding
 	}
 	return r.Header.Values(name)
 }
