@@ -163,7 +163,7 @@ func requireGlobals(t *testing.T, mw Middleware, wantGlobals ...uint64) {
 }
 
 func getGlobalVals(mw Middleware) []uint64 {
-	pool := mw.(*middleware).pool
+	pool := mw.(*poolMiddleware).pool
 	var guests []*guest
 	var globals []uint64
 
@@ -193,7 +193,7 @@ func requireHandleRequest(t *testing.T, mw Middleware, ctxNext handler.CtxNext, 
 	if want, have := expectedCtx, ctxNext>>32; want != have {
 		t.Errorf("unexpected ctx, want: %d, have: %d", want, have)
 	}
-	if mw.(*middleware).pool.Get() != nil {
+	if mw.(*poolMiddleware).pool.Get() != nil {
 		t.Error("expected handler to not return guest to the pool")
 	}
 }

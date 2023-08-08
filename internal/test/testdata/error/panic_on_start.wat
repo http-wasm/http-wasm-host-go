@@ -31,5 +31,5 @@
   (func $handle_request (export "handle_request") (result (; ctx_next ;) i64)
     (return (i64.const 0))) ;; don't call the next handler
 
-  (func $handle_response (export "handle_response") (param $reqCtx i32) (param $is_error i32))
+  (func $handle_response (export "handle_response") (param $ctx i32) (param $is_error i32))
 )

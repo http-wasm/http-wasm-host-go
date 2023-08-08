@@ -218,21 +218,41 @@ func TestHeaderValue(t *testing.T) {
 // TestHandleResponse uses test.BinE2EHandleResponse which ensures reqCtx
 // propagates from handler.FuncHandleRequest to handler.FuncHandleResponse.
 func TestHandleResponse(t *testing.T) {
-	mw, err := wasm.NewMiddleware(testCtx, test.BinE2EHandleResponse)
-	if err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name  string
+		guest []byte
+	}{
+		{
+			name:  "pool",
+			guest: test.BinE2EHandleResponse,
+		},
+		{
+			name:  "once",
+			guest: test.BinE2EAwaitResponse,
+		},
 	}
-	defer mw.Close(testCtx)
 
-	ts := httptest.NewServer(mw.NewHandler(testCtx, noopHandler))
-	defer ts.Close()
+	for _, tt := range tests {
+		tc := tt
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			mw, err := wasm.NewMiddleware(testCtx, tc.guest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer mw.Close(testCtx)
 
-	resp, err := ts.Client().Get(ts.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		t.Fatalf("invalid status code: %d, status message: %s", resp.StatusCode, resp.Status)
+			ts := httptest.NewServer(mw.NewHandler(testCtx, noopHandler))
+			defer ts.Close()
+
+			resp, err := ts.Client().Get(ts.URL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != 200 {
+				t.Fatalf("invalid status code: %d, status message: %s", resp.StatusCode, resp.Status)
+			}
+		})
 	}
 }

@@ -300,6 +300,9 @@ const (
 	// TODO: document on http-wasm-abi
 	FuncWriteBody = "write_body"
 
+	// FuncAwaitResponse TODO
+	FuncAwaitResponse = "await_response"
+
 	// FuncGetStatusCode returns the status code produced by FuncNext. This
 	// requires FeatureBufferResponse.
 	//

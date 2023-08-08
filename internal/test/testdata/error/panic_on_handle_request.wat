@@ -27,5 +27,5 @@
     ;; Issue the unreachable instruction instead of returning ctx_next
     (unreachable))
 
-  (func $handle_response (export "handle_response") (param $reqCtx i32) (param $is_error i32))
+  (func $handle_response (export "handle_response") (param $ctx i32) (param $is_error i32))
 )

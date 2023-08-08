@@ -17,6 +17,6 @@
     (return (i64.const 0)))
 
   ;; handle_response should not be called as handle_request returns zero.
-  (func (export "handle_response") (param $reqCtx i32) (param $is_error i32)
+  (func (export "handle_response") (param $ctx i32) (param $is_error i32)
     (unreachable))
 )

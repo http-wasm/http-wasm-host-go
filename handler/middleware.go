@@ -7,7 +7,6 @@ import (
 	"io"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 
 	"github.com/tetratelabs/wazero"
@@ -43,9 +42,9 @@ type Middleware interface {
 	Features() handler.Features
 
 	api.Closer
-}
 
-var _ Middleware = (*middleware)(nil)
+	instantiateHost(context.Context) error
+}
 
 type middleware struct {
 	host            handler.Host
@@ -54,7 +53,6 @@ type middleware struct {
 	moduleConfig    wazero.ModuleConfig
 	guestConfig     []byte
 	logger          api.Logger
-	pool            sync.Pool
 	features        handler.Features
 	instanceCounter uint64
 }
@@ -78,109 +76,103 @@ func NewMiddleware(ctx context.Context, guest []byte, host handler.Host, opts ..
 		return nil, fmt.Errorf("wasm: error creating middleware: %w", err)
 	}
 
-	m := &middleware{
+	guestModule, err := wr.CompileModule(ctx, guest)
+	if err != nil {
+		_ = wr.Close(ctx)
+		return nil, fmt.Errorf("wasm: error compiling guest: %w", err)
+	}
+
+	once, err := validateGuest(guestModule)
+	if err != nil {
+		_ = wr.Close(ctx)
+		return nil, err
+	}
+
+	// Detect if wasip1 is used and import it.
+	imports := detectImports(guestModule.ImportedFunctions())
+	if imports&importWasiP1 != 0 {
+		if _, err = wasi_snapshot_preview1.Instantiate(ctx, wr); err != nil {
+			_ = wr.Close(ctx)
+			return nil, fmt.Errorf("wasm: error instantiating wasip1: %w", err)
+		}
+	}
+
+	m := middleware{
 		host:         host,
 		runtime:      wr,
+		guestModule:  guestModule,
 		moduleConfig: o.moduleConfig,
 		guestConfig:  o.guestConfig,
 		logger:       o.logger,
 	}
 
-	if m.guestModule, err = m.compileGuest(ctx, guest); err != nil {
-		_ = wr.Close(ctx)
-		return nil, err
-	}
-
-	// Detect and handle any host imports or lack thereof.
-	imports := detectImports(m.guestModule.ImportedFunctions())
-	switch {
-	case imports&importWasiP1 != 0:
-		if _, err = wasi_snapshot_preview1.Instantiate(ctx, m.runtime); err != nil {
-			_ = wr.Close(ctx)
-			return nil, fmt.Errorf("wasm: error instantiating wasi: %w", err)
-		}
-		fallthrough // proceed to configure any http_handler imports
-	case imports&importHttpHandler != 0:
-		if _, err = m.instantiateHost(ctx); err != nil {
-			_ = wr.Close(ctx)
-			return nil, fmt.Errorf("wasm: error instantiating host: %w", err)
-		}
-	}
-
-	// Eagerly add one instance to the pool. Doing so helps to fail fast.
-	if g, err := m.newGuest(ctx); err != nil {
-		_ = wr.Close(ctx)
-		return nil, err
+	var ret Middleware
+	if once {
+		ret = &onceMiddleware{middleware: m}
 	} else {
-		m.pool.Put(g)
+		ret = &poolMiddleware{middleware: m}
 	}
 
-	return m, nil
+	if err = ret.instantiateHost(ctx); err != nil {
+		_ = wr.Close(ctx)
+		return nil, err
+	}
+
+	return ret, nil
 }
 
-func (m *middleware) compileGuest(ctx context.Context, wasm []byte) (wazero.CompiledModule, error) {
-	if guest, err := m.runtime.CompileModule(ctx, wasm); err != nil {
-		return nil, fmt.Errorf("wasm: error compiling guest: %w", err)
-	} else if handleRequest, ok := guest.ExportedFunctions()[handler.FuncHandleRequest]; !ok {
-		return nil, fmt.Errorf("wasm: guest doesn't export func[%s]", handler.FuncHandleRequest)
+func validateGuest(guest wazero.CompiledModule) (once bool, err error) {
+	if _, ok := guest.ExportedMemories()[api.Memory]; !ok {
+		return false, fmt.Errorf("wasm: guest doesn't export memory[%s]", api.Memory)
+	}
+
+	var awaitResponse, handleRequest, handleResponse wazeroapi.FunctionDefinition
+
+	// Look through the imports to see if the guest uses await_response
+	for _, f := range guest.ImportedFunctions() {
+		moduleName, name, _ := f.Import()
+		if moduleName == handler.HostModule && name == handler.FuncAwaitResponse {
+			awaitResponse = f
+			if !bytes.Equal(awaitResponse.ParamTypes(), []wazeroapi.ValueType{wazeroapi.ValueTypeI64}) || !bytes.Equal(awaitResponse.ResultTypes(), []wazeroapi.ValueType{wazeroapi.ValueTypeI32}) {
+				return false, fmt.Errorf("wasm: guest imports the wrong signature for func[%s]. should be (i64) -> (i32)", handler.FuncAwaitResponse)
+			} else {
+				once = true
+				break
+			}
+		}
+	}
+
+	// Look through the exports to see if the guest exports handle_request or handle_response
+	if handleRequest = guest.ExportedFunctions()[handler.FuncHandleRequest]; handleRequest == nil {
 	} else if len(handleRequest.ParamTypes()) != 0 || !bytes.Equal(handleRequest.ResultTypes(), []wazeroapi.ValueType{wazeroapi.ValueTypeI64}) {
-		return nil, fmt.Errorf("wasm: guest exports the wrong signature for func[%s]. should be () -> (i64)", handler.FuncHandleRequest)
-	} else if handleResponse, ok := guest.ExportedFunctions()[handler.FuncHandleResponse]; !ok {
-		return nil, fmt.Errorf("wasm: guest doesn't export func[%s]", handler.FuncHandleResponse)
+		return false, fmt.Errorf("wasm: guest exports the wrong signature for func[%s]. should be () -> (i64)", handler.FuncHandleRequest)
+	}
+
+	if handleResponse = guest.ExportedFunctions()[handler.FuncHandleResponse]; handleResponse == nil {
 	} else if !bytes.Equal(handleResponse.ParamTypes(), []wazeroapi.ValueType{wazeroapi.ValueTypeI32, wazeroapi.ValueTypeI32}) || len(handleResponse.ResultTypes()) != 0 {
-		return nil, fmt.Errorf("wasm: guest exports the wrong signature for func[%s]. should be (i32, 32) -> ()", handler.FuncHandleResponse)
-	} else if _, ok = guest.ExportedMemories()[api.Memory]; !ok {
-		return nil, fmt.Errorf("wasm: guest doesn't export memory[%s]", api.Memory)
-	} else {
-		return guest, nil
-	}
-}
-
-// HandleRequest implements Middleware.HandleRequest
-func (m *middleware) HandleRequest(ctx context.Context) (outCtx context.Context, ctxNext handler.CtxNext, err error) {
-	g, guestErr := m.getOrCreateGuest(ctx)
-	if guestErr != nil {
-		err = guestErr
-		return
+		return false, fmt.Errorf("wasm: guest exports the wrong signature for func[%s]. should be (i32, 32) -> ()", handler.FuncHandleResponse)
 	}
 
-	s := &requestState{features: m.features, putPool: m.pool.Put, g: g}
-	defer func() {
-		if ctxNext != 0 { // will call the next handler
-			if closeErr := s.closeRequest(); err == nil {
-				err = closeErr
-			}
-		} else { // guest errored or returned the response
-			if closeErr := s.Close(); err == nil {
-				err = closeErr
-			}
+	switch {
+	case awaitResponse == nil && handleRequest == nil && handleResponse == nil:
+		return false, fmt.Errorf("wasm: guest should import[%s] or both func[%s] and func[%s] ",
+			handler.FuncAwaitResponse, handler.FuncHandleRequest, handler.FuncHandleResponse)
+	case awaitResponse != nil:
+		if handleRequest != nil || handleResponse != nil {
+			return false, fmt.Errorf("wasm: guest that imports[%s] shouldn't export func[%s] or func[%s] ",
+				handler.FuncAwaitResponse, handler.FuncHandleRequest, handler.FuncHandleResponse)
 		}
-	}()
-
-	outCtx = context.WithValue(ctx, requestStateKey{}, s)
-	ctxNext, err = g.handleRequest(outCtx)
+	case handleRequest == nil:
+		return false, fmt.Errorf("wasm: guest doesn't export func[%s]", handler.FuncHandleRequest)
+	case handleResponse == nil:
+		return false, fmt.Errorf("wasm: guest doesn't export func[%s]", handler.FuncHandleResponse)
+	}
 	return
 }
 
-func (m *middleware) getOrCreateGuest(ctx context.Context) (*guest, error) {
-	poolG := m.pool.Get()
-	if poolG == nil {
-		if g, createErr := m.newGuest(ctx); createErr != nil {
-			return nil, createErr
-		} else {
-			poolG = g
-		}
-	}
-	return poolG.(*guest), nil
-}
-
-// HandleResponse implements Middleware.HandleResponse
-func (m *middleware) HandleResponse(ctx context.Context, reqCtx uint32, hostErr error) error {
-	s := requestStateFromContext(ctx)
-	defer s.Close()
-	s.afterNext = true
-
-	return s.g.handleResponse(ctx, reqCtx, hostErr)
+func (m *middleware) requestStateFromContext(ctx context.Context) *requestState {
+	s, _ := ctx.Value(requestStateKey{}).(*requestState)
+	return s
 }
 
 // Close implements api.Closer
@@ -189,13 +181,7 @@ func (m *middleware) Close(ctx context.Context) error {
 	return m.runtime.Close(ctx)
 }
 
-type guest struct {
-	guest            wazeroapi.Module
-	handleRequestFn  wazeroapi.Function
-	handleResponseFn wazeroapi.Function
-}
-
-func (m *middleware) newGuest(ctx context.Context) (*guest, error) {
+func (m *middleware) newModule(ctx context.Context) (wazeroapi.Module, error) {
 	moduleName := fmt.Sprintf("%d", atomic.AddUint64(&m.instanceCounter, 1))
 
 	g, err := m.runtime.InstantiateModule(ctx, m.guestModule, m.moduleConfig.WithName(moduleName))
@@ -203,32 +189,7 @@ func (m *middleware) newGuest(ctx context.Context) (*guest, error) {
 		_ = m.runtime.Close(ctx)
 		return nil, fmt.Errorf("wasm: error instantiating guest: %w", err)
 	}
-
-	return &guest{
-		guest:            g,
-		handleRequestFn:  g.ExportedFunction(handler.FuncHandleRequest),
-		handleResponseFn: g.ExportedFunction(handler.FuncHandleResponse),
-	}, nil
-}
-
-// handleRequest calls the WebAssembly guest function handler.FuncHandleRequest.
-func (g *guest) handleRequest(ctx context.Context) (ctxNext handler.CtxNext, err error) {
-	if results, guestErr := g.handleRequestFn.Call(ctx); guestErr != nil {
-		err = guestErr
-	} else {
-		ctxNext = handler.CtxNext(results[0])
-	}
-	return
-}
-
-// handleResponse calls the WebAssembly guest function handler.FuncHandleResponse.
-func (g *guest) handleResponse(ctx context.Context, reqCtx uint32, err error) error {
-	wasError := uint64(0)
-	if err != nil {
-		wasError = 1
-	}
-	_, err = g.handleResponseFn.Call(ctx, uint64(reqCtx), wasError)
-	return err
+	return g, nil
 }
 
 // enableFeatures implements the WebAssembly host function handler.FuncEnableFeatures.
@@ -236,7 +197,7 @@ func (m *middleware) enableFeatures(ctx context.Context, stack []uint64) {
 	features := handler.Features(stack[0])
 
 	var enabled handler.Features
-	if s, ok := ctx.Value(requestStateKey{}).(*requestState); ok {
+	if s := m.requestStateFromContext(ctx); s != nil {
 		s.features = m.host.EnableFeatures(ctx, s.features.WithEnabled(features))
 		enabled = s.features
 	} else {
@@ -299,7 +260,7 @@ func (m *middleware) setMethod(ctx context.Context, mod wazeroapi.Module, params
 	method := uint32(params[0])
 	methodLen := uint32(params[1])
 
-	_ = mustBeforeNext(ctx, "set", "method")
+	mustBeforeNext(m.requestStateFromContext(ctx), "set", "method")
 
 	var p string
 	if methodLen == 0 {
@@ -325,7 +286,7 @@ func (m *middleware) setURI(ctx context.Context, mod wazeroapi.Module, params []
 	uri := uint32(params[0])
 	uriLen := uint32(params[1])
 
-	_ = mustBeforeNext(ctx, "set", "uri")
+	mustBeforeNext(m.requestStateFromContext(ctx), "set", "uri")
 
 	var p string
 	if uriLen > 0 { // overwrite with empty is supported
@@ -426,7 +387,7 @@ func (m *middleware) setHeaderValue(ctx context.Context, mod wazeroapi.Module, p
 	if nameLen == 0 {
 		panic("HTTP header name cannot be empty")
 	}
-	mustHeaderMutable(ctx, "set", kind)
+	mustHeaderMutable(m.requestStateFromContext(ctx), "set", kind)
 	n := mustReadString(mod.Memory(), "name", name, nameLen)
 	v := mustReadString(mod.Memory(), "value", value, valueLen)
 
@@ -456,7 +417,8 @@ func (m *middleware) addHeaderValue(ctx context.Context, mod wazeroapi.Module, p
 	if nameLen == 0 {
 		panic("HTTP header name cannot be empty")
 	}
-	mustHeaderMutable(ctx, "add", kind)
+
+	mustHeaderMutable(m.requestStateFromContext(ctx), "add", kind)
 	n := mustReadString(mod.Memory(), "name", name, nameLen)
 	v := mustReadString(mod.Memory(), "value", value, valueLen)
 
@@ -484,7 +446,7 @@ func (m *middleware) removeHeader(ctx context.Context, mod wazeroapi.Module, par
 	if nameLen == 0 {
 		panic("HTTP header name cannot be empty")
 	}
-	mustHeaderMutable(ctx, "remove", kind)
+	mustHeaderMutable(m.requestStateFromContext(ctx), "remove", kind)
 	n := mustReadString(mod.Memory(), "name", name, nameLen)
 
 	switch kind {
@@ -507,10 +469,11 @@ func (m *middleware) readBody(ctx context.Context, mod wazeroapi.Module, stack [
 	buf := uint32(stack[1])
 	bufLimit := handler.BufLimit(stack[2])
 
+	s := m.requestStateFromContext(ctx)
 	var r io.ReadCloser
 	switch kind {
 	case handler.BodyKindRequest:
-		s := mustBeforeNextOrFeature(ctx, handler.FeatureBufferRequest, "read", "request body")
+		mustBeforeNextOrFeature(s, handler.FeatureBufferRequest, "read", "request body")
 		// Lazy create the reader.
 		r = s.requestBodyReader
 		if r == nil {
@@ -518,7 +481,7 @@ func (m *middleware) readBody(ctx context.Context, mod wazeroapi.Module, stack [
 			s.requestBodyReader = r
 		}
 	case handler.BodyKindResponse:
-		s := mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "read", "response body")
+		mustBeforeNextOrFeature(s, handler.FeatureBufferResponse, "read", "response body")
 		// Lazy create the reader.
 		r = s.responseBodyReader
 		if r == nil {
@@ -540,10 +503,11 @@ func (m *middleware) writeBody(ctx context.Context, mod wazeroapi.Module, params
 	buf := uint32(params[1])
 	bufLen := uint32(params[2])
 
+	s := m.requestStateFromContext(ctx)
 	var w io.Writer
 	switch kind {
 	case handler.BodyKindRequest:
-		s := mustBeforeNext(ctx, "write", "request body")
+		mustBeforeNext(s, "write", "request body")
 		// Lazy create the writer.
 		w = s.requestBodyWriter
 		if w == nil {
@@ -551,7 +515,7 @@ func (m *middleware) writeBody(ctx context.Context, mod wazeroapi.Module, params
 			s.requestBodyWriter = w
 		}
 	case handler.BodyKindResponse:
-		s := mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "write", "response body")
+		mustBeforeNextOrFeature(s, handler.FeatureBufferResponse, "write", "response body")
 		// Lazy create the writer.
 		w = s.responseBodyWriter
 		if w == nil {
@@ -589,7 +553,8 @@ func (m *middleware) getStatusCode(ctx context.Context, results []uint64) {
 func (m *middleware) setStatusCode(ctx context.Context, params []uint64) {
 	statusCode := uint32(params[0])
 
-	_ = mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, "set", "status code")
+	s := m.requestStateFromContext(ctx)
+	mustBeforeNextOrFeature(s, handler.FeatureBufferResponse, "set", "status code")
 
 	m.host.SetStatusCode(ctx, statusCode)
 }
@@ -622,15 +587,14 @@ func readBody(mod wazeroapi.Module, buf uint32, bufLimit handler.BufLimit, r io.
 	}
 }
 
-func mustBeforeNext(ctx context.Context, op, kind string) (s *requestState) {
-	if s = requestStateFromContext(ctx); s.afterNext {
+func mustBeforeNext(s *requestState, op, kind string) {
+	if s.afterNext {
 		panic(fmt.Errorf("can't %s %s after next handler", op, kind))
 	}
-	return
 }
 
-func mustBeforeNextOrFeature(ctx context.Context, feature handler.Features, op, kind string) (s *requestState) {
-	if s = requestStateFromContext(ctx); !s.afterNext {
+func mustBeforeNextOrFeature(s *requestState, feature handler.Features, op, kind string) {
+	if !s.afterNext {
 		// Assume this is serving a response from the guest.
 	} else if s.features.IsEnabled(feature) {
 		// Assume the guest is overwriting the response from next.
@@ -638,12 +602,11 @@ func mustBeforeNextOrFeature(ctx context.Context, feature handler.Features, op, 
 		panic(fmt.Errorf("can't %s %s after next handler unless %s is enabled",
 			op, kind, feature))
 	}
-	return
 }
 
 const i32, i64 = wazeroapi.ValueTypeI32, wazeroapi.ValueTypeI64
 
-func (m *middleware) instantiateHost(ctx context.Context) (wazeroapi.Module, error) {
+func (m *middleware) hostModuleBuilder() wazero.HostModuleBuilder {
 	return m.runtime.NewHostModuleBuilder(handler.HostModule).
 		NewFunctionBuilder().
 		WithGoFunction(wazeroapi.GoFunc(m.enableFeatures), []wazeroapi.ValueType{i32}, []wazeroapi.ValueType{i32}).
@@ -698,20 +661,19 @@ func (m *middleware) instantiateHost(ctx context.Context) (wazeroapi.Module, err
 		WithParameterNames().Export(handler.FuncGetStatusCode).
 		NewFunctionBuilder().
 		WithGoFunction(wazeroapi.GoFunc(m.setStatusCode), []wazeroapi.ValueType{i32}, []wazeroapi.ValueType{}).
-		WithParameterNames("status_code").Export(handler.FuncSetStatusCode).
-		Instantiate(ctx)
+		WithParameterNames("status_code").Export(handler.FuncSetStatusCode)
 }
 
-func mustHeaderMutable(ctx context.Context, op string, kind handler.HeaderKind) {
+func mustHeaderMutable(s *requestState, op string, kind handler.HeaderKind) {
 	switch kind {
 	case handler.HeaderKindRequest:
-		_ = mustBeforeNext(ctx, op, "request header")
+		mustBeforeNext(s, op, "request header")
 	case handler.HeaderKindRequestTrailers:
-		_ = mustBeforeNext(ctx, op, "request trailer")
+		mustBeforeNext(s, op, "request trailer")
 	case handler.HeaderKindResponse:
-		_ = mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, op, "response header")
+		mustBeforeNextOrFeature(s, handler.FeatureBufferResponse, op, "response header")
 	case handler.HeaderKindResponseTrailers:
-		_ = mustBeforeNextOrFeature(ctx, handler.FeatureBufferResponse, op, "response trailer")
+		mustBeforeNextOrFeature(s, handler.FeatureBufferResponse, op, "response trailer")
 	default:
 		panic("unsupported header kind: " + strconv.Itoa(int(kind)))
 	}

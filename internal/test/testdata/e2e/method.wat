@@ -40,5 +40,5 @@
     (return (i64.const 1)))
 
   ;; handle_response is no-op as this is a request-only handler.
-  (func (export "handle_response") (param $reqCtx i32) (param $is_error i32))
+  (func (export "handle_response") (param $ctx i32) (param $is_error i32))
 )

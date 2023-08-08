@@ -20,7 +20,7 @@
     (return (i64.const 1)))
 
   ;; handle_response tries to set a request header even though it is too late.
-  (func $handle_response (export "handle_response") (param $reqCtx i32) (param $is_error i32)
+  (func $handle_response (export "handle_response") (param $ctx i32) (param $is_error i32)
     (call $set_header_value
       (i32.const 0) ;; header_kind_request
       (global.get $name) (global.get $name_len)

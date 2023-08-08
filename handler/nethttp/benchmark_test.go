@@ -19,7 +19,7 @@ var (
 )
 
 func init() {
-	noopHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	noopHandler = func(w http.ResponseWriter, r *http.Request) {}
 	smallBody = []byte("hello world")
 	largeSize = 4096 // 2x the read buffer size
 	largeBody = make([]byte, largeSize)
@@ -39,11 +39,6 @@ func get(url string) (req *http.Request) {
 func getWithLargeHeader(url string) (req *http.Request) {
 	req, _ = http.NewRequest(http.MethodGet, url+"/v1.0/hi", nil)
 	req.Header.Add("data", string(largeBody))
-	return
-}
-
-func getWithQuery(url string) (req *http.Request) {
-	req, _ = http.NewRequest(http.MethodGet, url+"/v1.0/hi?name=panda", nil)
 	return
 }
 
@@ -108,6 +103,14 @@ var benches = map[string]struct {
 			req, _ = http.NewRequest(http.MethodGet, url+"/host", nil)
 			return
 		},
+	},
+	"example log": {
+		bin:     test.BinExampleLog,
+		request: get,
+	},
+	"example log once": {
+		bin:     test.BinExampleLogOnce,
+		request: get,
 	},
 	"log": {
 		bin:     test.BinBenchLog,

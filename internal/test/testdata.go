@@ -56,6 +56,10 @@ var BinExampleLog = func() []byte {
 	return binExample("log")
 }()
 
+var BinExampleLogOnce = func() []byte {
+	return binExample("log_once")
+}()
+
 var BinExampleRedact = func() []byte {
 	return binExample("redact")
 }()
@@ -79,6 +83,9 @@ var BinE2EURI []byte
 
 //go:embed testdata/e2e/header_value.wasm
 var BinE2EHeaderValue []byte
+
+//go:embed testdata/e2e/await_response.wasm
+var BinE2EAwaitResponse []byte
 
 //go:embed testdata/e2e/handle_response.wasm
 var BinE2EHandleResponse []byte

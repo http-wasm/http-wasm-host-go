@@ -1,4 +1,27 @@
-(module $handle_response
+(module $await_response
+
+  (import "http_handler" "await_response" (func $await_response
+    (param $ctx_next i64)
+    (result (; is_error ;) i32)))
+
+  ;; define a start function that performs a request-response without exports.
+  (func $start
+    (local $ctx_next i64)
+    (local $is_error i32)
+    (local $ctx i32)
+
+    ;; ctxNext := handleRequest()
+    (local.set $ctx_next (call $handle_request))
+
+    ;; isError := awaitResponse(ctxNext())
+    (local.set $is_error (call $await_response (local.get $ctx_next)))
+
+    ;; expected_count = uint32(result >> 32)
+    (local.set $ctx
+      (i32.wrap_i64 (i64.shr_u (local.get $ctx_next) (i64.const 32))))
+
+    (call $handle_response (local.get $ctx) (local.get $is_error))
+  )
 
   (memory (export "memory") 1 1 (; 1 page==64KB ;))
 
@@ -8,7 +31,7 @@
 
   ;; handle_request sets the request ID to the global then increments the
   ;; global.
-  (func (export "handle_request") (result (; ctx_next ;) i64)
+  (func $handle_request (result (; ctx_next ;) i64)
     (local $ctx i32)
 
     ;; reqCtx := global.reqCtx
@@ -25,7 +48,7 @@
 
   ;; If propagation works, the current request ID should be one less than the
   ;; global.
-  (func (export "handle_response") (param $ctx i32) (param $is_error i32)
+  (func $handle_response (param $ctx i32) (param $is_error i32)
     ;; if reqCtx != global.reqCtx - 1 { panic }
     (if (i32.ne
           (local.get $ctx)

@@ -17,7 +17,7 @@
     (return (i64.const 1))) ;; call the next handler
 
   ;; On handle_response, write "panic!" to stdout and crash.
-  (func $handle_response (export "handle_response") (param $reqCtx i32) (param $is_error i32)
+  (func $handle_response (export "handle_response") (param $ctx i32) (param $is_error i32)
     ;; Write the panic to stdout via its iovec [offset, len].
     (call $wasi.fd_write
       (i32.const 1) ;; stdout
