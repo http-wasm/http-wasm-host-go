@@ -35,10 +35,10 @@
     ;; ctxNext := handleRequest()
     (local.set $ctx_next (call $handle_request))
 
-    ;; isError := awaitResponse(ctxNext())
+    ;; isError := awaitResponse(ctxNext)
     (local.set $is_error (call $await_response (local.get $ctx_next)))
 
-    ;; expected_count = uint32(result >> 32)
+    ;; ctx = uint32(ctxNext >> 32)
     (local.set $ctx
       (i32.wrap_i64 (i64.shr_u (local.get $ctx_next) (i64.const 32))))
 
