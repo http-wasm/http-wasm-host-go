@@ -16,12 +16,10 @@ func main() {
 	h := handler{enabledFeatures: enabledFeatures}
 
 	httpwasm.HandleRequestFn = h.handleRequest
-	httpwasm.HandleResponseFn = h.handleResponse
 }
 
 type handler struct {
 	enabledFeatures api.Features
-	protocolVersion string
 }
 
 func (h *handler) handleRequest(req api.Request, resp api.Response) (next bool, reqCtx uint32) {
@@ -29,14 +27,15 @@ func (h *handler) handleRequest(req api.Request, resp api.Response) (next bool, 
 	if len(testID) == 0 {
 		resp.SetStatusCode(500)
 		resp.Body().WriteString("missing x-httpwasm-tck-testid header")
-		return
+		return false, 0
 	}
 
 	switch testID {
 	case "get_protocol_version":
 		// The test runner compares this with the request value.
-		h.protocolVersion = req.GetProtocolVersion()
-		return true, 0
+		resp.Body().WriteString(req.GetProtocolVersion())
+		next = true
+		reqCtx = 0
 	case "get_method/GET":
 		next, reqCtx = h.testGetMethod(req, resp, "GET")
 	case "get_method/HEAD":
@@ -218,9 +217,4 @@ func (h *handler) testReadBody(req api.Request, resp api.Response, expectedBody 
 func fail(resp api.Response, msg string) {
 	resp.SetStatusCode(500)
 	resp.Headers().Set("x-httpwasm-tck-failed", msg)
-}
-
-func (h *handler) handleResponse(ctx uint32, _ api.Request, res api.Response, err bool) {
-	res.Headers().Set("x-httpwasm-tck-handled", "1")
-	res.Body().WriteString(h.protocolVersion)
 }
