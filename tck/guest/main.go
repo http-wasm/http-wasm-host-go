@@ -27,13 +27,15 @@ func (h *handler) handleRequest(req api.Request, resp api.Response) (next bool, 
 	if len(testID) == 0 {
 		resp.SetStatusCode(500)
 		resp.Body().WriteString("missing x-httpwasm-tck-testid header")
-		return
+		return false, 0
 	}
 
 	switch testID {
 	case "get_protocol_version":
 		// The test runner compares this with the request value.
 		resp.Body().WriteString(req.GetProtocolVersion())
+		next = true
+		reqCtx = 0
 	case "get_method/GET":
 		next, reqCtx = h.testGetMethod(req, resp, "GET")
 	case "get_method/HEAD":
@@ -115,7 +117,7 @@ func (h *handler) testGetMethod(req api.Request, resp api.Response, expectedMeth
 	if req.GetMethod() != expectedMethod {
 		fail(resp, fmt.Sprintf("get_method: want %s, have %s", expectedMethod, req.GetMethod()))
 	}
-	return
+	return true, 0
 }
 
 func (h *handler) testSetMethod(req api.Request, _ api.Response) (next bool, reqCtx uint32) {
@@ -127,7 +129,7 @@ func (h *handler) testGetURI(req api.Request, resp api.Response, expectedURI str
 	if req.GetURI() != expectedURI {
 		fail(resp, fmt.Sprintf("get_uri: want %s, have %s", expectedURI, req.GetURI()))
 	}
-	return
+	return true, 0
 }
 
 func (h *handler) testSetURI(req api.Request, _ api.Response, uri string) (next bool, reqCtx uint32) {
@@ -148,7 +150,7 @@ func (h *handler) testGetRequestHeader(req api.Request, resp api.Response, heade
 		}
 	}
 
-	return
+	return true, 0
 }
 
 func (h *handler) testGetRequestHeaderNames(req api.Request, resp api.Response, expectedNames []string) (next bool, reqCtx uint32) {
@@ -172,7 +174,7 @@ func (h *handler) testGetRequestHeaderNames(req api.Request, resp api.Response, 
 		}
 	}
 
-	return
+	return true, 0
 }
 
 func (h *handler) testSetRequestHeader(req api.Request, _ api.Response, header string, value string) (next bool, reqCtx uint32) {
@@ -209,7 +211,7 @@ func (h *handler) testReadBody(req api.Request, resp api.Response, expectedBody 
 		return
 	}
 
-	return
+	return true, 0
 }
 
 func fail(resp api.Response, msg string) {
