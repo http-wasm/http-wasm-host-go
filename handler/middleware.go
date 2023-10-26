@@ -565,6 +565,17 @@ func (m *middleware) writeBody(ctx context.Context, mod wazeroapi.Module, params
 	writeBody(mod, buf, bufLen, w)
 }
 
+// getRemoteAddr implements the WebAssembly host function handler.FuncGetRemoteAddr.
+func (m *middleware) getRemoteAddr(ctx context.Context, mod wazeroapi.Module, stack []uint64) {
+	buf := uint32(stack[0])
+	bufLimit := handler.BufLimit(stack[1])
+
+	method := m.host.GetRemoteAddr(ctx)
+	methodLen := writeStringIfUnderLimit(mod.Memory(), buf, bufLimit, method)
+
+	stack[0] = uint64(methodLen)
+}
+
 func writeBody(mod wazeroapi.Module, buf, bufLen uint32, w io.Writer) {
 	// buf_len 0 means to overwrite with nothing
 	var b []byte
@@ -693,6 +704,9 @@ func (m *middleware) instantiateHost(ctx context.Context) (wazeroapi.Module, err
 		NewFunctionBuilder().
 		WithGoModuleFunction(wazeroapi.GoModuleFunc(m.writeBody), []wazeroapi.ValueType{i32, i32, i32}, []wazeroapi.ValueType{}).
 		WithParameterNames("kind", "body", "body_len").Export(handler.FuncWriteBody).
+		NewFunctionBuilder().
+		WithGoModuleFunction(wazeroapi.GoModuleFunc(m.getRemoteAddr), []wazeroapi.ValueType{i32, i32}, []wazeroapi.ValueType{i32}).
+		WithParameterNames("buf", "buf_limit").Export(handler.FuncGetRemoteAddr).
 		NewFunctionBuilder().
 		WithGoFunction(wazeroapi.GoFunc(m.getStatusCode), []wazeroapi.ValueType{}, []wazeroapi.ValueType{i32}).
 		WithParameterNames().Export(handler.FuncGetStatusCode).
