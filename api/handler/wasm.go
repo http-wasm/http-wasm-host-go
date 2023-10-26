@@ -318,7 +318,7 @@ const (
 	FuncSetStatusCode = "set_status_code"
 
 	// FuncGetRemoteAddr writes the RemoteAddr to memory if it isn't larger than
-	// BufLimit. The result is its length in bytes. Ex. "1.1.1.1"
+	// BufLimit. The result is its length in bytes. Ex. "1.1.1.1:12345"
 	//
 	// TODO: document on http-wasm-abi
 	FuncGetRemoteAddr = "get_remote_addr"

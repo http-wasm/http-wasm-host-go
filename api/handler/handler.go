@@ -209,4 +209,4 @@ func (UnimplementedHost) GetResponseTrailerValues(context.Context, string) (valu
 func (UnimplementedHost) SetResponseTrailerValue(context.Context, string, string)            {}
 func (UnimplementedHost) AddResponseTrailerValue(context.Context, string, string)            {}
 func (UnimplementedHost) RemoveResponseTrailer(context.Context, string)                      {}
-func (UnimplementedHost) GetRemoteAddr(context.Context) string                               { return "1.1.1.1" }
+func (UnimplementedHost) GetRemoteAddr(context.Context) string                               { return "1.1.1.1:12345" }
