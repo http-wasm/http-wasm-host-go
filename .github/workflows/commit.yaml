@@ -25,15 +25,16 @@ jobs:
     strategy:
       matrix:
         go-version:  # Note: Go only supports 2 versions: https://go.dev/doc/devel/release#policy
-          - "1.19"
           - "1.20"
+          - "1.21"
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:  # not cache: true as we also need to cache golint
           go-version: ${{ matrix.go-version }}
+          cache: false
 
       - uses: actions/cache@v3
         with:
@@ -46,7 +47,7 @@ jobs:
 
       - name: "Set up wat2wasm"
         run: |  # Needed for testdata. wabt includes wat2wasm.
-          wabt_version=1.0.32
+          wabt_version=1.0.33
           wabt_url=https://github.com/WebAssembly/wabt/releases/download/${wabt_version}/wabt-${wabt_version}-ubuntu.tar.gz
           curl -sSL ${wabt_url} | tar --strip-components 2 -C /usr/local/bin -xzf - wabt-${wabt_version}/bin/wat2wasm
 
@@ -59,15 +60,15 @@ jobs:
     strategy:
       matrix:
         go-version:  # Note: Go only supports 2 versions: https://go.dev/doc/devel/release#policy
-          - "1.19"
           - "1.20"
+          - "1.21"
 
     steps:
       - name: "Checkout"
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: "Set up Go"
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v4
         with:
           go-version: ${{ matrix.go-version }}
           cache: true
@@ -83,24 +84,24 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: "Checkout"
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: "Set up Go"
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v4
         with:
-          go-version: "1.20"
+          go-version: "1.21"
           cache: true
 
       - name: "Set up TinyGo"
         uses: acifani/setup-tinygo@v1
         with:
-          tinygo-version: 0.27.0
+          tinygo-version: 0.30.0
 
       - name: "Cache TinyGo build"
         uses: actions/cache@v3
         with:
           path: ~/.cache/tinygo
-          key: tinygo-0.27.0
+          key: tinygo-0.30.0
 
       - name: "Build TCK"
         run: make tck
