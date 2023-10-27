@@ -162,8 +162,8 @@ type Host interface {
 	// FeatureTrailers is not supported.
 	RemoveResponseTrailer(ctx context.Context, name string)
 
-	// GetRemoteAddr supports the WebAssembly function export FuncGetRemoteAddr.
-	GetRemoteAddr(ctx context.Context) string
+	// GetSourceAddr supports the WebAssembly function export FuncGetSourceAddr.
+	GetSourceAddr(ctx context.Context) string
 }
 
 // eofReader is safer than reading from os.DevNull as it can never overrun
@@ -209,4 +209,4 @@ func (UnimplementedHost) GetResponseTrailerValues(context.Context, string) (valu
 func (UnimplementedHost) SetResponseTrailerValue(context.Context, string, string)            {}
 func (UnimplementedHost) AddResponseTrailerValue(context.Context, string, string)            {}
 func (UnimplementedHost) RemoveResponseTrailer(context.Context, string)                      {}
-func (UnimplementedHost) GetRemoteAddr(context.Context) string                               { return "1.1.1.1:12345" }
+func (UnimplementedHost) GetSourceAddr(context.Context) string                               { return "1.1.1.1:12345" }
