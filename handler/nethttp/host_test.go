@@ -17,6 +17,7 @@ func Test_host(t *testing.T) {
 	newCtx := func(features handler.Features) (context.Context, handler.Features) {
 		// The below configuration supports all features.
 		r, _ := http.NewRequest("GET", "", bytes.NewReader(nil))
+		r.RemoteAddr = "1.2.3.4:12345"
 		w := &bufferingResponseWriter{delegate: &httptest.ResponseRecorder{HeaderMap: map[string][]string{}}}
 		return context.WithValue(testCtx, requestStateKey{}, &requestState{r: r, w: w}), features
 	}

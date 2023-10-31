@@ -1,2 +1,2 @@
-github.com/http-wasm/http-wasm-guest-tinygo v0.1.1 h1:7L+MhMNDVsUAqmElG64JEZ0n1yGCKTx0w01N1b08Xhc=
-github.com/http-wasm/http-wasm-guest-tinygo v0.1.1/go.mod h1:roTs1mkyGDe1CUzrL8JUXSbPNYUHnnWKMCG6epmRAZY=
+github.com/http-wasm/http-wasm-guest-tinygo v0.3.1-0.20231031134125-487a6e2eec5e h1:mUEuIuH+XAtp5tkJPpwN5ZAtgvt64tYaYsk/KoK42lQ=
+github.com/http-wasm/http-wasm-guest-tinygo v0.3.1-0.20231031134125-487a6e2eec5e/go.mod h1:zcKr7h/t5ha2ZWIMwV4iOqhfC/qno/tNPYgybVkn/MQ=

@@ -49,6 +49,7 @@ func HostTest(t *testing.T, h handler.Host, newCtx func(handler.Features) (conte
 	ht.testResponseHeaders()
 	ht.testResponseBody()
 	ht.testResponseTrailers()
+	ht.testSourceAddr()
 
 	if len(ht.errText) == 0 {
 		return nil
@@ -62,6 +63,18 @@ type hostTester struct {
 	h       handler.Host
 	newCtx  func(handler.Features) (context.Context, handler.Features)
 	errText []byte
+}
+
+func (h *hostTester) testSourceAddr() {
+	ctx, _ := h.newCtx(0) // no features required
+
+	h.t.Run("GetSourceAddr", func(t *testing.T) {
+		addr := h.h.GetSourceAddr(ctx)
+		want := "1.2.3.4:12345"
+		if addr != want {
+			t.Errorf("unexpected default source addr, want: %v, have: %v", want, addr)
+		}
+	})
 }
 
 func (h *hostTester) testMethod() {
