@@ -104,6 +104,8 @@ func (h *handler) handleRequest(req api.Request, resp api.Response) (next bool, 
 		next, reqCtx = h.testReadBody(req, resp, strings.Repeat("a", 4096))
 	case "read_body/request/xlarge":
 		next, reqCtx = h.testReadBody(req, resp, strings.Repeat("a", 5000))
+	case "get_source_addr":
+		next, reqCtx = h.testGetSourceAddr(req, resp, "127.0.0.1")
 	default:
 		fail(resp, "unknown x-httpwasm-test-id")
 	}
@@ -211,6 +213,24 @@ func (h *handler) testReadBody(req api.Request, resp api.Response, expectedBody 
 		return
 	}
 
+	return true, 0
+}
+
+func (h *handler) testGetSourceAddr(req api.Request, resp api.Response, expectedAddr string) (next bool, reqCtx uint32) {
+	addr := req.GetSourceAddr()
+	raw := strings.Split(addr, ":")
+	if len(raw) != 2 {
+		fail(resp, fmt.Sprintf("get_source_addr: unknown colon count %s", req.GetSourceAddr()))
+		return
+	}
+	if raw[0] != expectedAddr {
+		fail(resp, fmt.Sprintf("get_source_addr: want %s, have %s", expectedAddr, req.GetSourceAddr()))
+		return
+	}
+	if len(raw[1]) <= 0 || len(raw[1]) > 5 {
+		fail(resp, fmt.Sprintf("get_source_addr: could not find port number '%s' from %s", raw[1], req.GetSourceAddr()))
+		return
+	}
 	return true, 0
 }
 

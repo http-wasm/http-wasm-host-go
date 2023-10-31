@@ -346,3 +346,9 @@ func addTrailer(header http.Header, name string, value string) {
 func removeTrailer(header http.Header, name string) {
 	header.Del(http.TrailerPrefix + name)
 }
+
+// GetSourceAddr implements the same method as documented on handler.Host.
+func (host) GetSourceAddr(ctx context.Context) string {
+	r := requestStateFromContext(ctx).r
+	return r.RemoteAddr
+}

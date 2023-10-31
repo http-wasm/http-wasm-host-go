@@ -53,6 +53,7 @@ func Run(t *testing.T, client *http.Client, url string) {
 	r.testAddHeaderValueRequest()
 	r.testRemoveHeaderRequest()
 	r.testReadBodyRequest()
+	r.testGetSourceAddr()
 }
 
 type testRunner struct {
@@ -491,6 +492,24 @@ func (r *testRunner) testRemoveHeaderRequest() {
 			}
 		})
 	}
+}
+
+func (r *testRunner) testGetSourceAddr() {
+	hostFn := handler.FuncGetSourceAddr
+
+	r.t.Run(hostFn, func(t *testing.T) {
+		req, err := http.NewRequest("GET", r.url, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		req.Header.Set("x-httpwasm-tck-testid", hostFn)
+		resp, err := r.client.Do(req)
+		if err != nil {
+			t.Error(err)
+		}
+		checkResponse(t, resp)
+	})
 }
 
 func checkResponse(t *testing.T, resp *http.Response) string {
