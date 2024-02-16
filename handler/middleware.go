@@ -691,10 +691,10 @@ func (m *middleware) instantiateHost(ctx context.Context) (wazeroapi.Module, err
 		WithParameterNames("kind", "name", "name_len", "buf", "buf_limit").Export(handler.FuncGetHeaderValues).
 		NewFunctionBuilder().
 		WithGoModuleFunction(wazeroapi.GoModuleFunc(m.setHeaderValue), []wazeroapi.ValueType{i32, i32, i32, i32, i32}, []wazeroapi.ValueType{}).
-		WithParameterNames("kind", "name", "name_len", "value", "value").Export(handler.FuncSetHeaderValue).
+		WithParameterNames("kind", "name", "name_len", "value", "value_len").Export(handler.FuncSetHeaderValue).
 		NewFunctionBuilder().
 		WithGoModuleFunction(wazeroapi.GoModuleFunc(m.addHeaderValue), []wazeroapi.ValueType{i32, i32, i32, i32, i32}, []wazeroapi.ValueType{}).
-		WithParameterNames("kind", "name", "name_len", "value", "value").Export(handler.FuncAddHeaderValue).
+		WithParameterNames("kind", "name", "name_len", "value", "value_len").Export(handler.FuncAddHeaderValue).
 		NewFunctionBuilder().
 		WithGoModuleFunction(wazeroapi.GoModuleFunc(m.removeHeader), []wazeroapi.ValueType{i32, i32, i32}, []wazeroapi.ValueType{}).
 		WithParameterNames("kind", "name", "name_len").Export(handler.FuncRemoveHeader).
