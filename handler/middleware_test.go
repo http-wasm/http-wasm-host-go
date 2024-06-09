@@ -8,6 +8,8 @@ import (
 
 	"github.com/http-wasm/http-wasm-host-go/api/handler"
 	"github.com/http-wasm/http-wasm-host-go/internal/test"
+	"github.com/tetratelabs/wazero"
+	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 )
 
 var testCtx = context.Background()
@@ -42,6 +44,33 @@ wasm stack trace:
 				mw.Close(testCtx)
 			}
 		})
+	}
+}
+
+type UnimplementedHostWithBufferFeature struct {
+	handler.UnimplementedHost
+}
+
+func (UnimplementedHostWithBufferFeature) EnableFeatures(context.Context, handler.Features) handler.Features {
+	return handler.FeatureBufferRequest
+}
+
+func TestAlreadyExistingWasipModulue(t *testing.T) {
+	mw, err := NewMiddleware(testCtx, test.BinExampleWASI, UnimplementedHostWithBufferFeature{}, Runtime(func(ctx context.Context) (wazero.Runtime, error) {
+		r := wazero.NewRuntime(context.Background())
+		_, err := wasi_snapshot_preview1.Instantiate(ctx, r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r, nil
+	}))
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if mw != nil {
+		mw.Close(testCtx)
 	}
 }
 
