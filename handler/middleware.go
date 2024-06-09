@@ -95,10 +95,13 @@ func NewMiddleware(ctx context.Context, guest []byte, host handler.Host, opts ..
 	imports := detectImports(m.guestModule.ImportedFunctions())
 	switch {
 	case imports&importWasiP1 != 0:
-		if _, err = wasi_snapshot_preview1.Instantiate(ctx, m.runtime); err != nil {
-			_ = wr.Close(ctx)
-			return nil, fmt.Errorf("wasm: error instantiating wasi: %w", err)
+		if m.runtime.Module(wasi_snapshot_preview1.ModuleName) == nil {
+			if _, err = wasi_snapshot_preview1.Instantiate(ctx, m.runtime); err != nil {
+				_ = wr.Close(ctx)
+				return nil, fmt.Errorf("wasm: error instantiating wasi: %w", err)
+			}
 		}
+
 		fallthrough // proceed to configure any http_handler imports
 	case imports&importHttpHandler != 0:
 		if _, err = m.instantiateHost(ctx); err != nil {
