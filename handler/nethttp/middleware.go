@@ -3,12 +3,11 @@ package wasm
 import (
 	"context"
 	"fmt"
+	handlerapi "github.com/http-wasm/http-wasm-host-go/api/handler"
+	"github.com/http-wasm/http-wasm-host-go/handler"
 	"io"
 	"net/http"
 	"runtime"
-
-	handlerapi "github.com/http-wasm/http-wasm-host-go/api/handler"
-	"github.com/http-wasm/http-wasm-host-go/handler"
 )
 
 // compile-time checks to ensure interfaces are implemented.
@@ -26,13 +25,7 @@ func NewMiddleware(ctx context.Context, guest []byte, options ...handler.Option)
 		return nil, err
 	}
 
-	mw := &middleware{m: m}
-	runtime.SetFinalizer(mw, func(mw *middleware) {
-		if err := mw.Close(ctx); err != nil {
-			fmt.Printf("[http-wasm-host-go] middleware Close failed: %v", err)
-		}
-	})
-	return mw, nil
+	return &middleware{m: m}, nil
 }
 
 // requestStateKey is a context.Context value associated with a requestState
@@ -95,12 +88,18 @@ func requestStateFromContext(ctx context.Context) *requestState {
 
 // NewHandler implements the same method as documented on handler.Middleware.
 func (w *middleware) NewHandler(_ context.Context, next http.Handler) http.Handler {
-	return &guest{
+	h := &guest{
 		handleRequest:  w.m.HandleRequest,
 		handleResponse: w.m.HandleResponse,
 		next:           next,
 		features:       w.m.Features(),
 	}
+	runtime.SetFinalizer(h, func(h *guest) {
+		if err := w.Close(context.Background()); err != nil {
+			fmt.Printf("[http-wasm-host-go] middleware Close failed: %v", err)
+		}
+	})
+	return h
 }
 
 // Close implements the same method as documented on handler.Middleware.
