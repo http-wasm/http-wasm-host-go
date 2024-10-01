@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
 
 	handlerapi "github.com/http-wasm/http-wasm-host-go/api/handler"
 	"github.com/http-wasm/http-wasm-host-go/handler"
@@ -24,7 +25,14 @@ func NewMiddleware(ctx context.Context, guest []byte, options ...handler.Option)
 	if err != nil {
 		return nil, err
 	}
-	return &middleware{m: m}, nil
+
+	mw := &middleware{m: m}
+	runtime.SetFinalizer(mw, func(mw *middleware) {
+		if err := mw.Close(ctx); err != nil {
+			fmt.Printf("[http-wasm-host-go] middleware Close failed: %v", err)
+		}
+	})
+	return mw, nil
 }
 
 // requestStateKey is a context.Context value associated with a requestState
