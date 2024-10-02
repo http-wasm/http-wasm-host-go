@@ -1,6 +1,6 @@
 gofumpt := mvdan.cc/gofumpt@v0.5.0
 gosimports := github.com/rinchsan/gosimports/cmd/gosimports@v0.3.8
-golangci_lint := github.com/golangci/golangci-lint/cmd/golangci-lint@v1.61.1
+golangci_lint := github.com/golangci/golangci-lint/cmd/golangci-lint@v1.61.0
 
 .PHONY: testdata
 testdata:
