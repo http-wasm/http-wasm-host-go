@@ -6,10 +6,11 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/http-wasm/http-wasm-host-go/api/handler"
-	"github.com/http-wasm/http-wasm-host-go/internal/test"
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
+
+	"github.com/http-wasm/http-wasm-host-go/api/handler"
+	"github.com/http-wasm/http-wasm-host-go/internal/test"
 )
 
 var testCtx = context.Background()
@@ -64,7 +65,6 @@ func TestAlreadyExistingWasipModulue(t *testing.T) {
 		}
 		return r, nil
 	}))
-
 	if err != nil {
 		t.Fatal(err)
 	}
