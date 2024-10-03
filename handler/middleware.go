@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -171,6 +172,15 @@ func (m *middleware) getOrCreateGuest(ctx context.Context) (*guest, error) {
 		if g, createErr := m.newGuest(ctx); createErr != nil {
 			return nil, createErr
 		} else {
+			runtime.SetFinalizer(g, func(g *guest) {
+				if err := g.guest.Close(context.Background()); err != nil {
+					fmt.Printf("[http-wasm-host-go] middleware wazeroapi guest module close err: %v", err)
+				} else {
+					g.guest = nil
+					g.handleRequestFn = nil
+					g.handleResponseFn = nil
+				}
+			})
 			poolG = g
 		}
 	}

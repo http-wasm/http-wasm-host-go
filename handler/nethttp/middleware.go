@@ -24,6 +24,7 @@ func NewMiddleware(ctx context.Context, guest []byte, options ...handler.Option)
 	if err != nil {
 		return nil, err
 	}
+
 	return &middleware{m: m}, nil
 }
 
