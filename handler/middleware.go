@@ -112,7 +112,7 @@ func NewMiddleware(ctx context.Context, guest []byte, host handler.Host, opts ..
 	}
 
 	// Eagerly add one instance to the pool. Doing so helps to fail fast.
-	if g, err := m.newGuest(ctx); err != nil {
+	if g, err := m.getOrCreateGuest(ctx); err != nil {
 		_ = wr.Close(ctx)
 		return nil, err
 	} else {
@@ -172,15 +172,20 @@ func (m *middleware) getOrCreateGuest(ctx context.Context) (*guest, error) {
 		if g, createErr := m.newGuest(ctx); createErr != nil {
 			return nil, createErr
 		} else {
+			// while closing the runtime will close the guest modules, when the pool
+			// runs its own GC there are no guarantees that the guest module will be
+			// closed and hence we need to ensure that the guest module is closed with
+			// a finalizer.
 			runtime.SetFinalizer(g, func(g *guest) {
 				if err := g.guest.Close(context.Background()); err != nil {
-					fmt.Printf("[http-wasm-host-go] middleware wazeroapi guest module close err: %v", err)
+					m.logger.Log(ctx, api.LogLevelError, fmt.Sprintf("closing guest module: %v", err))
 				} else {
 					g.guest = nil
 					g.handleRequestFn = nil
 					g.handleResponseFn = nil
 				}
 			})
+
 			poolG = g
 		}
 	}
