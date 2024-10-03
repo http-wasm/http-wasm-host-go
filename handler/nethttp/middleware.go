@@ -3,10 +3,11 @@ package wasm
 import (
 	"context"
 	"fmt"
-	handlerapi "github.com/http-wasm/http-wasm-host-go/api/handler"
-	"github.com/http-wasm/http-wasm-host-go/handler"
 	"io"
 	"net/http"
+
+	handlerapi "github.com/http-wasm/http-wasm-host-go/api/handler"
+	"github.com/http-wasm/http-wasm-host-go/handler"
 )
 
 // compile-time checks to ensure interfaces are implemented.
